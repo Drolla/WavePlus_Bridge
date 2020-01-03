@@ -1,0 +1,44 @@
+#header {
+	background-color:black;
+	color:white;
+	text-align:center;
+	position: relative;
+}
+#header h1 {
+	margin: 0;
+}
+#header p {
+	position: absolute;
+	top: 0;
+	left: 0;
+	margin: 0;
+	text-align: left;
+}
+#header form {
+	position: absolute;
+	top: 0;
+	right: 0;
+}
+#header form input {
+	float:right;
+}
+#section {
+	float:left;
+	padding:10px;
+}
+#footer {
+	background-color:black;
+	color:white;
+	clear:both;
+	text-align: center;
+	padding:5px;
+}
+table tbody, table thead, table * tr, table * td, table * th {
+	border: inherit;
+}
+table {
+	border: 1px solid black;
+	border-collapse: collapse;
+	text-align: left;
+	margin-left: 10px;
+}

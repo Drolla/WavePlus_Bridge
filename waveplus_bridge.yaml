@@ -1,0 +1,7 @@
+period: 120
+sn:
+   - 2930014021, cellar_office
+   - 2930016073, cellar_room
+port: 80
+csv: /var/log/waveplus_bridge.csv
+log: /var/log/waveplus_bridge.log
