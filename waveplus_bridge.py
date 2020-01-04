@@ -63,7 +63,8 @@ class ReadConfiguration:
         config= vars(self.parse_arguments())
         for config_file in {config['config'], "~/waveplus_bridge.yaml"}:
             for key, value in self.read_yaml_config_file(config_file).items():
-                if config[key] is None or len(config[key]) == 0:
+                if config[key] is None or \
+                   (type(config[key]) is list and len(config[key]) == 0):
                     config[key] = value
 
         # Apply some default configuration
@@ -129,7 +130,7 @@ class ReadConfiguration:
         parser.add_argument("--csv",
                 help="CSV file to store data")
         parser.add_argument("--log",
-                help="Log file. Otherwise the information is sent to stdout")
+                help="Log file. If not specified the stdout is used")
         parser.add_argument("--config",
                 help="YAML configuration file")
 
@@ -393,7 +394,7 @@ if __name__ == "__main__":
 
     # Define the log output
     logf = sys.stdout
-    if config.log is not None:
+    if config.log is not None and config.log != "":
         try:
             logf = open(config.log, "a", 1)
             print("Logfile:", config.log)
