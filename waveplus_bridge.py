@@ -410,6 +410,7 @@ if __name__ == "__main__":
                     "Temp", "Pressure", "CO2", "VOC"],
                     ["", "", "%rH", "Bq/m3", "Bq/m3", "degC", "hPa", "ppm",
                     "ppb"])
+            print("Data are logged to CSV file", config.csv, file=logf)
         except:
             print("Unable to open CSV file", config.csv, file=logf)
             sys.exit(1)
@@ -419,6 +420,7 @@ if __name__ == "__main__":
         try:
             server = ThreadedHTTPServer(
                     ("", int(config.port)), HttpRequestHandler)
+            print("HTTP/Web server started on port", config.port, file=logf)
         except:
             print("Unable to open HTTP port", config.port, file=logf)
             sys.exit(1)
