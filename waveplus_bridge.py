@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 ##########################################################################
-# Airthings Wave Plus bridge to Wifi/LAN
+# Airthings Wave Plus Bridge to Wifi/LAN
 ##########################################################################
-# waveplus_bridge.py - Wave Plus bridge main program
+# waveplus_bridge.py - Wave Plus Bridge main program
 # 
-# This file implements the following features of the Wave Plus bridge:
+# This file implements the following features of the Wave Plus Bridge:
 # 
 #   * Sensor scan of one or multiple Wave Plus devices in a user definable
 #     interval
@@ -46,7 +46,7 @@ assert sys.version_info >= (3, 0, 0), "Python 3.x required to run this program"
 
 class ReadConfiguration:
     """
-    Class to handle the configuration of the Wave Plus bridge.
+    Class to handle the configuration of the Wave Plus Bridge.
     Reads the configuration provided as command line arguments, and completes 
     them by definitions provided by Yaml files.
     The configuration is held in form of a dictionary.
@@ -58,11 +58,13 @@ class ReadConfiguration:
         completes them by definitions provided by Yaml files.
         """
         
-        # Complete the configuration obtained by parsing the command line 
-        # arguments with the ones defined by the Yaml files.
+        # Read the configuration from the command line arguments
         config= vars(self.parse_arguments())
-        for config_file in {config['config'], "~/waveplus_bridge.yaml"}:
-            for key, value in self.read_yaml_config_file(config_file).items():
+
+        # Complete the configurations by with the ones defined by the Yaml file
+        if config['config'] is not None:
+            for key, value in \
+                    self.read_yaml_config_file(config['config']).items():
                 if config[key] is None or \
                    (type(config[key]) is list and len(config[key]) == 0):
                     config[key] = value
@@ -73,7 +75,7 @@ class ReadConfiguration:
                 config[key] = value
         
         # Split the serial number definitions into the real serial numbers and
-        # device names: 2930014021, cellar -> sn=2930014021, name=cellar
+        # device names: 2931234567, cellar -> sn=2931234567, name=cellar
         sn_defs = config['sn']
         config['sn'] = []
         config['name'] = {}
@@ -115,7 +117,7 @@ class ReadConfiguration:
         """
         
         parser = argparse.ArgumentParser(
-                description="Wave Plus to Wifi/LAN bridge")
+                description="Wave Plus to Wifi/LAN Bridge")
         parser.add_argument(
                 "--period",
                 help="time in seconds between reading the sensor values")
@@ -124,7 +126,7 @@ class ReadConfiguration:
                 help="""10-digit serial number of a Wave Plus device (see under
                         the magnetic backplate. This number can be combined 
                         with a device nickname, separated by a column from the 
-                        serial number ("2930014021, cellar_office")""")
+                        serial number ("2931234567, my_office")""")
         parser.add_argument("--port",
                 help="Port of the HTTP web server")
         parser.add_argument("--csv",
