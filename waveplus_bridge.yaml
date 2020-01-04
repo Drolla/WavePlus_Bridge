@@ -1,7 +1,21 @@
+# Period: Time in seconds between reading the sensor values
 period: 120
+
+# SN: List of 10-digit serial number of one or multiple Wave Plus devices (see 
+# under the magnetic backplate. Each number can be combined with a device 
+# nickname, separated by a column from the serial number 
+# (e.g. "2931234567, my_office").
 sn:
-   - 2930014021, cellar_office
-   - 2930016073, cellar_room
+   - 2931234567, my_office
+   - 2931234569, my_living
+
+# Port: HTTP/Web server listening port. If no HTTP/web server is required,
+# comment the following line.
 port: 80
+
+# CSV: CSV log file. If no CSV data logging is required, comment the 
+# following line.
 csv: /var/log/waveplus_bridge.csv
+
+# Log: Log file. Comment the following line to log all intormation to stdout.
 log: /var/log/waveplus_bridge.log
