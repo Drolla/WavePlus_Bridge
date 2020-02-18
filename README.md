@@ -27,7 +27,7 @@ The tool runs with Python 3.x. It can be installed as a service that is launched
 * [Raspberry Pi Installation](#raspberry-pi-installation)
     * [Raspbian installation](#raspbian-installation)
     * [Python Library Installation](#python-library-installation)
-
+* [Related topics](#related-topics)
 
 # Requirements
 
@@ -286,3 +286,7 @@ Install the Python3 packages that are missing to run the Wave Plus Bridge:
 sudo pip3 install PyYAML
 sudo pip3 install bluepy
 ```
+
+# Related topics #
+
+* [Correlation between Airthings Wave Plus and Corentium Plus Devices](https://github.com/Drolla/WavePlus_Bridge/wiki/Radon-Measurement-Correlation)
