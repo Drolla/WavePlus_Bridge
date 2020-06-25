@@ -1,21 +1,26 @@
 ##########################################################################
 # Multi threaded HTTP/web server
 ##########################################################################
-# 
 # This file implements a multi threaded HTTP/Web server. The port listening and
 # the request handler for each open socket is executed in an individual deamon
 # thread.
-
+##########################################################################
 # Copyright (C) 2020 Andreas Drollinger
+# See the file "LICENSE" for information on usage and redistribution of this 
+# file, and for a DISCLAIMER OF ALL WARRANTIES.
 ##########################################################################
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 
 class ThreadedHTTPServer(HTTPServer):
-    """
-    Multi threaded HTTP/web server class. It can be used in the same way as the
-    standard class 'HTTPServer'.
+    """Multi threaded HTTP/web server class.
+    
+    This HTTP/web server class can be used in the same way as the standard 
+    class 'HTTPServer', but it generates for the HTTP port listener as well as
+    for each HTTP connection a separate thread. This ensures that a main 
+    application is not affected timing wise by the HTTP server activities, and
+    that also the different opened sockets are not interfering.
     """
 
     def __init__(self, *args):
