@@ -34,9 +34,19 @@ import struct
 import argparse
 import yaml
 import json
+import fnmatch
 from http.server import BaseHTTPRequestHandler
-from bluepy.btle import UUID, Peripheral, Scanner, DefaultDelegate
+import urllib
+try:
+    from bluepy.btle import UUID, Peripheral, Scanner, DefaultDelegate
+except:
+    pass
 from libs.threadedhttpserver import ThreadedHTTPServer
+import libs.logdb as logdb
+try:
+    import tests.waveplus_emulation as waveplus_emulation
+except:
+    pass
 
 assert sys.version_info >= (3, 0, 0), "Python 3.x required to run this program"
 
@@ -60,8 +70,9 @@ class ReadConfiguration:
         
         # Read the configuration from the command line arguments
         config= vars(self.parse_arguments())
+        config["graph_decimations"] = None
 
-        # Complete the configurations by with the ones defined by the Yaml file
+        # Complete the configurations with the ones defined by the Yaml file
         if config['config'] is not None:
             for key, value in \
                     self.read_yaml_config_file(config['config']).items():
@@ -70,7 +81,10 @@ class ReadConfiguration:
                     config[key] = value
 
         # Apply some default configuration
-        for key, value in {"period": "120"}.items():
+        for key, value in {
+                "period": str(120),
+                "data_retention": str(31*24*3600) # 31 days
+        }.items():
             if config[key] is None:
                 config[key] = value
         
@@ -122,6 +136,9 @@ class ReadConfiguration:
                 "--period",
                 help="time in seconds between reading the sensor values")
         parser.add_argument(
+                "--data_retention",
+                help="data retention time in seconds")
+        parser.add_argument(
                 "sn", metavar="sn", type=str, nargs="*",
                 help="""10-digit serial number of a Wave Plus device (see under
                         the magnetic backplate. This number can be combined 
@@ -135,6 +152,15 @@ class ReadConfiguration:
                 help="Log file. If not specified the stdout is used")
         parser.add_argument("--config",
                 help="YAML configuration file")
+        parser.add_argument("--emulation", action='store_true', default=None,
+                help="""Emulates the connection with a WavePlus device. This allows
+                        testing all other features, like data logging, HTTP
+                        service, etc.""")
+        parser.add_argument("--report_performance",
+                action='store_true', default=None,
+                help="""Reports the execution time of some tasks, like the CSV
+                        file loading, CVS file creation for an HTTP query,
+                        etc.""")
 
         return parser.parse_args()
 
@@ -146,6 +172,34 @@ class ReadConfiguration:
         for x in self.__dict__:
             yield x
 
+
+#############################################
+# Performance reporting
+#############################################
+
+class PerformanceCheck():
+    """
+    This class provides the tool to check the performance of tasks, by setting
+    a time anchor before the task is executed, and measuring and reporting then
+    the time the execution of the task has taken.
+    """
+    
+    # The performance check and report has to be actively activated
+    check_active = False
+    file = sys.stdout
+    
+    def __init__(self, task_description):
+        if not self.check_active:
+            return
+        self.start_time = time.time()
+        self.task_description = task_description
+
+    def __del__(self):
+        if not self.check_active:
+            return
+        execution_time_ms = 1000*(time.time()-self.start_time)
+        print(("Performance check, {}: {:.3f}ms").
+               format(self.task_description, execution_time_ms), file=self.file)
 
 #############################################
 # Class WavePlus and Sensors
@@ -165,6 +219,9 @@ class WavePlus():
         self.sn = sn
         self.name = name if name != "" else sn
         self.uuid = UUID("b42e2a68-ade7-11e4-89d3-123b93f75cba")
+    
+    def __del__(self):
+        self.disconnect()
 
     def connect(self):
         # Auto-discover device on first connection
@@ -292,7 +349,7 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
         """
         Handler method for the GET requests.
         """
-        
+
         # Default HTTP response and content type.
         http_response = 200
         http_content_type ="text/html"
@@ -311,6 +368,26 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
             http_body = json.dumps(response_raw_data)
             http_content_type ="application/json"
 
+        # If path is /csv: Provide the current sensor data in CSV format.
+        elif self.path.startswith("/csv"):
+            if "?" in self.path:
+                device_pattern = urllib.parse.unquote(self.path.split("?")[1])
+                if device_pattern[0:3] == "re=":
+                    device_pattern = device_pattern[3:]
+                else:
+                    # device_pattern = eval(device_pattern, {}, {})
+                    device_pattern = [fnmatch.translate(dpat) 
+                                          for dpat in device_pattern.split(";")]
+            else:
+                device_pattern = ".*"
+
+            pc = PerformanceCheck("CSV data creation")
+            http_body = ldb.get_csv(
+                    device_pattern,
+                    section_decimation_definitions=config["graph_decimations"])
+            del pc
+            http_content_type ="application/csv"
+
         # If path starts with /ui/: Provide the content of the related file
         elif self.path.startswith("/ui/") and ".." not in self.path:
             try:
@@ -326,6 +403,16 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
             except IOError:
                 http_response = 404
                 http_body = "<h1>404 - File not found</h1>"
+
+        # Debug support - allow executing commands
+        elif self.path.startswith("/eval") and "?" in self.path:
+            try:
+                py_function = urllib.parse.unquote(self.path.split("?")[1])
+                py_result = eval(py_function)
+                http_body = "Result:<br>" + str(py_result)
+            except Exception as err:
+                http_body = "Error:<br>" + str(err)
+                
 
         # Any other requests are invalid
         else:
@@ -346,41 +433,6 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
 
 
 #############################################
-# CSV data log
-#############################################
-
-class CsvLog:
-    """
-    Very simply CSV logging class.
-    Once the CSV object is created, data lines can be added with the 'print'
-    method. Print takes an indefinite number of arguments that are separated 
-    with a comma when they are written into the CSV file.
-    The class creator takes optionally one or two header lists that are written
-    into the CSV file if a new one is created. If the file exists already, it 
-    is opened in append mode.
-    """
-    
-    def __init__(self, file, header1=None, header2=None):
-        file_exists = os.path.exists(file)
-        self.f = open(file,"a", 1)
-        if file_exists:
-            return
-        if header1 is not None:
-            self.print(*header1)
-        if header2 is not None:
-            self.print(*header2)
-
-    def __del__(self):
-        try:
-            self.f.close()
-        except:
-            pass
-    
-    def print(self, *args):
-        print(*args, sep=",", file=self.f, flush=True)
-
-
-#############################################
 # Main
 #############################################
 
@@ -392,7 +444,10 @@ if __name__ == "__main__":
     except AssertionError as err:
         print("ERROR:", err)
         sys.exit(1)
-    print("Configuration:", config)
+    
+    # Check that the bluepy module could be loaded if the application does not
+    # run in emulated mode
+    assert "bluepy" in sys.modules or config.emulation
 
     # Define the log output
     logf = sys.stdout
@@ -401,21 +456,35 @@ if __name__ == "__main__":
             logf = open(config.log, "a", 1)
             print("Logfile:", config.log)
             print("Configuration:", config, file=logf)
+        except PermissionError:
+            print("No permission to open file", config.log, "use stdout instead")
         except:
             print("Unable to log to file", config.log, "use stdout instead")
 
-    # Open the CSV log file
-    if config.csv is not None:
-        try:
-            csvf = CsvLog(config.csv,
-                    ["Name", "Date/Time", "Humidity", "Radon ST", "Radon LT", 
-                    "Temp", "Pressure", "CO2", "VOC"],
-                    ["", "", "%rH", "Bq/m3", "Bq/m3", "degC", "hPa", "ppm",
-                    "ppb"])
-            print("Data are logged to CSV file", config.csv, file=logf)
-        except:
-            print("Unable to open CSV file", config.csv, file=logf)
-            sys.exit(1)
+    # Enable performance check if requested
+    if config.report_performance:
+        PerformanceCheck.check_active = True
+        PerformanceCheck.file = logf
+
+    # Data logging, optionally into a CSV file
+    try:
+        log_labels = ["humidity", "radon_st", "radon_lt",
+                      "temperature", "pressure", "co2", "voc"]
+        pc = PerformanceCheck("CSV file loading")
+        ldb=logdb.LogDB(
+                {config.name[sn]:log_labels for sn in config.sn},
+                config.csv,
+                number_retention_records=config.data_retention/config.period)
+        del pc
+        print("Data are logged to CSV file", config.csv, file=logf)
+    except PermissionError:
+        print("No permission to open file", config.csv, file=logf)
+    except Exception as err:
+        print("Error accessing CSV file", config.csv, ":", err, file=logf)
+        if logf != sys.stdout:
+            print("Error accessing CSV file", config.csv, ":", err,
+                    file=sys.stderr)
+        sys.exit(1)
 
     # Start the HTTP web server
     if config.port is not None:
@@ -432,41 +501,60 @@ if __name__ == "__main__":
     all_sensor_data = {}
 
     for sn in config.sn:
-        wp_device = WavePlus(sn, config.name[sn])
+        if not config.emulation:
+            wp_device = WavePlus(sn, config.name[sn])
+        else:
+            wp_device = waveplus_emulation.WavePlus(sn, config.name[sn])
         wp_devices.append(wp_device)
 
     # Main loop
     print("Press ctrl+C to exit program!", file=logf)
+    iteration_start_time = time.time()
+    if config.emulation:
+        nbr_pre_emulated = config.data_retention/config.period
+        if len(ldb.data["Time"]) < nbr_pre_emulated:
+            iteration_start_time -= \
+                    (nbr_pre_emulated-len(ldb.data["Time"]))*config.period
     while True:
-        for wp_device in wp_devices:
+        try:
+            sensor_data = {}
+            for wp_device in wp_devices:
+                try:
+                    # read values
+                    wp_device.connect()
+                    sensors = wp_device.read()
+                    sdata = sensors.get()
+                    wp_device.disconnect()
+                
+                    # Store result
+                    sensor_data[wp_device.name] = sdata.copy()
+                    sdata["update_time"] = int(time.time())
+                    all_sensor_data[wp_device.name] = sdata
+
+                except Exception as err:
+                    print("Failed to communicate with device", wp_device.sn,
+                            "/", wp_device.name, ":", err, file=logf)
+
+            # Store data in log database
             try:
-                # read values
-                wp_device.connect()
-                sensors = wp_device.read()
-                sdata = sensors.get()
-                sdata["update_time"] = int(time.time())
-                wp_device.disconnect()
-            
-                # Store result in overall result dict
-                all_sensor_data[wp_device.name] = sdata
-
-                # Print data
-                if config.csv is not None:
-                    csvf.print(
-                            wp_device.name, sdata["update_time"],
-                            sdata["humidity"], sdata["radon_st"], 
-                            sdata["radon_lt"], sdata["temperature"], 
-                            sdata["pressure"], sdata["co2"], sdata["voc"])
+                ldb.insert(sensor_data, tstamp=int(iteration_start_time))
             except Exception as err:
-                print("Failed to communicate with device",
-                        wp_device.sn, "/", wp_device.name, ":", err, file=logf)
+                print("Failed to log the data:", err, file=logf)
 
-        time.sleep(int(config.period))
-            
+            iteration_start_time += config.period
+            if not config.emulation:
+                time.sleep(max(0, iteration_start_time - time.time()))
+            elif len(ldb.data["Time"])>nbr_pre_emulated:
+                time.sleep(max(0, iteration_start_time - time.time()))
+        except KeyboardInterrupt:
+            break
+        except Exception as err:
+            print("Error:", err, file=logf)
+            pass
+
     # Close connections and open files
     for wp_device in wp_devices:
-        wp_device.disconnect()
-    if config.csv is not None:
-        del csvf
+        del wp_device
+    print("WavePlus_bridge ended", file=logf)
     if config.log is not None:
         del logf
