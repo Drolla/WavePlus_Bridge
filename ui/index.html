@@ -3,22 +3,51 @@
 <head>
 	<meta http-equiv="content-type" content="text/html"; charset="utf-8">
 	<title>WavePlus Bridge</title>
-	<BASE href="">
 	<script type="text/javascript" src="waveplus_bridge.js"></script>
+	<script src="//cdnjs.cloudflare.com/ajax/libs/dygraph/2.1.0/dygraph.min.js"></script>
+	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/dygraph/2.1.0/dygraph.min.css" />
+	<script type="text/javascript" src="dygraph_synchronizer.js"></script>
+	<link rel="shortcut icon" href="favicon.ico">
 	<script>
 		function OnLoad() {
-			setTimeout("location.reload(true);",60000);
-			LoadData("/data","t_data");
+			LoadTable("/data","current_data");
+			setInterval('LoadTable("/data","current_data");',60000);
+			setTimeout('LoadGraphs("/data","graphs");',1000);
 		}
+
+		window.addEventListener('load', function () {
+			var head = document.getElementsByTagName('HEAD')[0];
+			var link = document.createElement('link');
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			//if ( /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent.toLowerCase()) ) {
+			if (window.screen.width<800) {
+				link.href = 'waveplus_bridge_mobile.css';
+				DisplayType="Mobile";
+			} else {
+				link.href = 'waveplus_bridge.css';
+				DisplayType="Classic";
+			}
+			head.appendChild(link);
+			console.log(DisplayType);
+			//document.body.innerHTML += "window.innerWidth/Height:" +
+			//                           window.innerWidth + "/" + window.innerHeight +
+			//									  "<br>window.screen.Width/Height:" +
+			//                           window.screen.width + "/" + window.screen.height;
+		}, false);
+
 	</script>
-	<link rel="stylesheet" href="waveplus_bridge.css">
-	<link rel="shortcut icon" href="favicon.ico">
 </head>
 <body onload="OnLoad()">
 	<div id="header"><h1>WavePlus Bridge</h1></div>
-	<div id="section">
+	<div id="curent_data_section">
 		<h1>Current data</h1>
-		<div id="t_data">
+		<div id="current_data">
+		</div>
+	</div>
+	<div id="graphs_section">
+		<h1>Graphs</h1>
+		<div id="graphs">
 		</div>
 	</div>
 	<div id="footer">WavePlus Bridge</div>

@@ -22,10 +22,58 @@
 #header form input {
 	float:right;
 }
-#section {
+#curent_data_section {
 	float:left;
 	padding:10px;
 }
+#graphs_section {
+	clear:both;
+	width: 98%;
+//	height: 100%;
+	float:left;
+	padding:10px;
+}
+#graphs {
+	clear:both;
+	width: 100%;
+//	height: 100%;
+	position: relative;
+}
+
+.graph_container {
+	clear:both;
+	width: 100%;
+	height: 300px;
+	position: relative;
+}
+
+.graph_div {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 10;
+	width: 100%;
+	height: 100%;
+}
+.graph_label {
+	position: absolute;
+	top: 0px;
+	left: 70px;
+}
+
+.dygraph-rangesel-zoomhandle {
+	/* transform: scale(3,3) */
+}
+
+/* .dygraph-rangesel-bgcanvas, .dygraph-rangesel-fgcanvas {
+	transform: scale(1,1.5)
+} */
+
+.dygraph-title {
+	padding-top: 30px;
+	font-size: 150%;
+}
+
 #footer {
 	background-color:black;
 	color:white;
