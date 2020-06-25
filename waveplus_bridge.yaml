@@ -1,6 +1,16 @@
 # Period: Time in seconds between reading the sensor values
 period: 120
 
+# Data retention time in seconds
+data_retention: 2678400 # 31 days
+
+# The graph decimation is used to reduce the CSV data used to produce 
+# the graphs (see logdb.get_csv)
+graph_decimations:
+   -1.0: 8 # -31 days (1st logging sample)
+   -5760: 3 # - 8 days
+   -750: 1 # - 25 hours
+
 # SN: List of 10-digit serial number of one or multiple Wave Plus devices (see 
 # under the magnetic backplate. Each number can be combined with a device 
 # nickname, separated by a column from the serial number 
@@ -14,8 +24,13 @@ sn:
 port: 80
 
 # CSV: CSV log file. If no CSV data logging is required, comment the 
-# following line.
+# following line. The CSV file is reloaded after restart, which guarantees that
+# the graphs shown on the HTML page shows also previous data.
 csv: /var/log/waveplus_bridge.csv
 
-# Log: Log file. Comment the following line to log all intormation to stdout.
+# Log: Log file. Comment the following line to log all information to stdout.
 log: /var/log/waveplus_bridge.log
+
+# Keep test features disabled
+# emulation: True
+# report_performance: True
