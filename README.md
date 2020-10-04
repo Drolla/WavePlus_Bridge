@@ -191,6 +191,9 @@ alerts:
 The second alert configuration uses multiple sources, trigger levels and mail destination addresses. It provides all necessary information to understand the configuration options:
 
 ```
+# Remove the following line (alerts:) if this example should be concatenated to
+# the previous one.
+alerts:
     -   # At least one source (device:sensors) has to be defined as trigger
         # source. The example shows the definition of multiple sources 
         # (list form):
