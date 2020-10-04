@@ -7,13 +7,15 @@ This tool provides a bridge between one or multiple **Airthings Wave Plus** sens
 * HTTP web server
   - Presentation of the Wave Plus sensor data as HTML web page
   - Exposure of the sensor data via a JSON API
+* Email alerts
+  - High flexibility in specifying alert conditions
 * Logging of the sensor data in a CSV file
 
 The tool runs with Python 3.x. It can be installed as a service that is launched automatically when the Raspberry Pi boots.
 
 ![Concept picture](Concept.png)
 
-**Table of contents**
+## Table of contents
 
 * [Requirements](#requirements)
     * [Hardware Requirements](#hardware-requirements)
@@ -58,7 +60,7 @@ The sections [Raspbian installation](#raspbian-installation) and [Python Library
 
 # Wave Plus Bridge Configuration
 
-The Wave Plus Bridge can be configured via command line arguments, via a YAML configuration file or via a combination of both of them. The command line arguments have precedence over the YAML configuration file, which has been used in an example below to override the log file definition. Advanced configurations, e.g. mail alerts, can only be performed via the YAML file and not via command line arguments.
+The Wave Plus Bridge can be configured via command line arguments, via a YAML configuration file or via a combination of both of them. The command line arguments have precedence over the YAML configuration file, which has been used in an example below to override the log file definition. Advanced configurations, e.g. email alerts, can only be performed via the YAML file and not via command line arguments.
 
 
 ## Command Line Configuration
@@ -78,13 +80,13 @@ usage: waveplus_bridge.py [-h] [--period PERIOD]
 
 Wave Plus to Wifi/LAN Bridge
 
-positional arguments:
+Positional arguments:
   sn                    10-digit serial number of a Wave Plus device (see
                         under the magnetic backplate. This number can be
                         combined with a device nickname, separated by a column
                         from the serial number ("2931234567, my_office")
 
-optional arguments:
+Optional arguments:
   -h, --help            Show this help message and exit
   --period PERIOD       Time in seconds between reading the sensor values
   --data_retention DATA_RETENTION
@@ -95,9 +97,11 @@ optional arguments:
   --config CONFIG       YAML configuration file
 ```
 
+
 ## YAML based Configuration
 
-The same and additional parameters can also be configured via YAML files specified with the --config command line argument. The Wave Plus Bridge package provides a YAML  template file (waveplus_bridge.yaml) that has to be adapted to the specific needs.
+The same and additional parameters can also be configured via YAML files specified with the --config command line argument. The Wave Plus Bridge package provides a YAML template file (waveplus_bridge.yaml) that has to be adapted to the specific needs.
+
 
 ### Basic Configuration
 
@@ -146,8 +150,9 @@ graph_decimations:
 
 Email alerts can be sent when certain conditions are met (e.g. radon level higher than 100 Bq/m3 for more than 1 hour). To send such email alerts, an SMTP server has to be specified and one or multiple alert triggers defined.
 
+The following lines show an example of a SMTP server configuration:
+
 ```
-# SMTP server definition to send mail alerts
 smtp_server:
     # Mail server address
     server: mail.server.com
@@ -163,19 +168,30 @@ smtp_server:
     
     # Login user password
     password: bridge123
+```
 
+One or multiple alerts can be defined. Each alert has one or multiple sources (device sensors), a trigger and one or multiple actions.
 
-# Mail (and print) alerts
-# One or multiple alerts can be defined. Each alert has one or multiple 
-# sources (device sensors), a trigger and one or multiple actions.
+The first example of an email alert configuration uses the simplest form (single source, single threshold level, single mail destination address). Comprehensive explanations about the parameters are given in the 2nd example. The alert configuration is added in form of a list (starting with "-") to allow adding additional configurations:
+
+```
 alerts:
-    # The example shows the definition of multiple alerts in form of a list
-    # (starting with "-"). The list form is optional for a single alert.
-    -
-        # The first alert definition uses multiple sources, trigger levels and 
-        # mail destination addresses:
+    -   sources:
+            my_office:radon_st
+        trigger:
+            above: 150
+            for: "00:30:00"
+            min_interval: "01:00:00"
+        actions:
+            mail:
+                from: wave.plus@myhome.com
+                to: sophia.millar@family.com
+```
 
-        # At least one source (device:sensors) has to be defined as trigger
+The second alert configuration uses multiple sources, trigger levels and mail destination addresses. It provides all necessary information to understand the configuration options:
+
+```
+    -   # At least one source (device:sensors) has to be defined as trigger
         # source. The example shows the definition of multiple sources 
         # (list form):
         sources:
@@ -238,22 +254,11 @@ alerts:
                         Radon level is too high!
                         Sensor: %d, %s
                         Level: %v'
-
-    # Example of a 2nd alert that has a single sources (no list form), a 
-    # single threshold level, and a single mail destination address:
-    -   sources:
-            my_office:radon_st
-        trigger:
-            above: 150
-            for: "00:30:00"
-            min_interval: "01:00:00"
-        actions:
-            mail:
-                from: wave.plus@myhome.com
-                to: sophia.millar@family.com
 ```
 
+
 # Wave Plus Bridge Installation
+
 
 ## Wave Plus Bridge Installation
 

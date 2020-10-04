@@ -72,13 +72,28 @@ smtp_server:
 # One or multiple alerts can be defined. Each alert has one or multiple 
 # sources (device sensors), a trigger and one or multiple actions.
 alerts:
-    # The example shows the definition of multiple alerts in form of a list
-    # (starting with "-"). The list form is optional for a single alert.
-    -
-        # The first alert definition uses multiple sources, trigger levels and 
-        # mail destination addresses:
+    # The first example of an email alert configuration uses the simplest form 
+    # (single source, single threshold level, single mail destination address).
+    # Comprehensive explanations about the parameters are given in the 2nd
+    # example.
+    # The alert configuration is added in form of a list (starting with "-") to 
+    # allow adding additional configurations:
+    -   sources:
+            my_office:radon_st
+        trigger:
+            above: 150
+            for: "00:30:00"
+            min_interval: "01:00:00"
+        actions:
+            mail:
+                from: wave.plus@myhome.com
+                to: sophia.millar@family.com
 
-        # At least one source (device:sensors) has to be defined as trigger
+    # The second alert configuration uses multiple sources, trigger levels and 
+    # mail destination addresses. It provides all necessary information to 
+    # understand the configuration options:
+
+    -   # At least one source (device:sensors) has to be defined as trigger
         # source. The example shows the definition of multiple sources 
         # (list form):
         sources:
@@ -141,19 +156,6 @@ alerts:
                         Radon level is too high!
                         Sensor: %d, %s
                         Level: %v'
-
-    # Example of a 2nd alert that has a single sources (no list form), a 
-    # single threshold level, and a single mail destination address:
-    -   sources:
-            my_office:radon_st
-        trigger:
-            above: 150
-            for: "00:30:00"
-            min_interval: "01:00:00"
-        actions:
-            mail:
-                from: wave.plus@myhome.com
-                to: sophia.millar@family.com
 
 
 ######## Test support ########
