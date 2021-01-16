@@ -167,7 +167,7 @@ class _LogDbCsv:
                 value = self._NAN
         return value
 
-    def restore_data(self, data=None):
+    def restore_data(self, data=None, number_retention_records=None):
         """Restores the data from the CSV file.
         
         This method restores data from the CSV file either in the data 
@@ -177,6 +177,9 @@ class _LogDbCsv:
         Args:
             data (list of arrays): Optionally provided data structure 
                 where the data has to be restored. Default: None.
+            number_retention_records: 
+                Optional maximum number of data records to load to reduce the 
+                memory footprint.
         
         Return:
             list of arrays: Data structure
@@ -215,7 +218,13 @@ class _LogDbCsv:
         read_pos = file_size
         reload_size = self.INIT_RELOAD_SIZE
         all_read = False
+        nbr_records_to_load = float('inf') if number_retention_records is None \
+                              else number_retention_records
         while not all_read:
+            # Limit the number of records to load if required
+            if nbr_records_to_load <= 0:
+                break
+
             # Set the read position to the new location. Ensure that the
             # header line is not read
             if read_pos-reload_size < self.header_length:
@@ -252,7 +261,7 @@ class _LogDbCsv:
                     raise Exception(("LogDbCVS, restore_data: Line with more " +
                                      "than {} values: {!a}").format(
                                     len(data_record), str(line, self.ENCODING)))
-                
+
                 # Add the data of the line to the data arrays
                 for index, data_item in enumerate(data_record):
                     if data_matrix[index] is None:
@@ -264,6 +273,11 @@ class _LogDbCsv:
                     if data_matrix[index] is None:
                         continue
                     data_matrix[index].append(self._NAN)
+
+                # Limit the number of records to load if required
+                nbr_records_to_load -= 1
+                if nbr_records_to_load <= 0:
+                    break
             
             # Increase the reload chunk size
             reload_size *= 2
@@ -428,7 +442,7 @@ class LogDB:
         logdbcsv = None
         if file is not None:
             logdbcsv = _LogDbCsv(labels, file, log_delta=log_delta)
-            logdbcsv.restore_data(data)
+            logdbcsv.restore_data(data, number_retention_records)
 
         self.labels = labels
         self.logdbcsv = logdbcsv
@@ -521,15 +535,17 @@ class LogDB:
         # exceeds 10% of the specified limit.
         nbr_rec_to_delete = 0
         if self.number_retention_records is not None and \
-                len(self.data) > self.number_retention_records*1.1:
-            nbr_rec_to_delete = len(self.data) - self.number_retention_record
+                len(self.data["Time"]) > self.number_retention_records*1.1:
+            nbr_rec_to_delete = len(self.data["Time"]) - \
+                                self.number_retention_records
         if self.retention_time is not None:
-            while self.data[0][nbr_rec_to_delete] < tstamp - \
-                                                    self.retention_time*1.1:
+            while (nbr_rec_to_delete < len(self.data["Time"])) and \
+                  (self.data["Time"][nbr_rec_to_delete] < \
+                   tstamp - self.retention_time*1.1):
                 nbr_rec_to_delete += 1
         if nbr_rec_to_delete > 0:
-            for index in range(len(self.data)):
-                self.data[index] = self.data[index][nbr_rec_to_delete:]
+            for label in self.labels:
+                self.data[label] = self.data[label][nbr_rec_to_delete:]
 
 
     def get_labels_from_spec(self, label_specs):
