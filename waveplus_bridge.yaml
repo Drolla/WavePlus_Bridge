@@ -83,7 +83,7 @@ alerts:
         trigger:
             above: 150
             for: "00:30:00"
-            min_interval: "01:00:00"
+            min_interval: "12:00:00"
         actions:
             mail:
                 from: wave.plus@myhome.com
@@ -120,7 +120,7 @@ alerts:
             # in the format Hours:Minutes:Seconds. The minimum re-triggering
             # interval is not respected if the re-triggering is due to a
             # higher trigger threshold level than the previously triggering.
-            min_interval: "01:00:00"
+            min_interval: "12:00:00"
 
         # One or multiple actions can be specified. An action can be a mail 
         # alert, or a message to the stdout and to the log file.
@@ -149,13 +149,13 @@ alerts:
                     message: |-
                         Radon level is too high!
                         Sensor: %d, %s
-                        Level: %v'
+                        Level: %v
             -   print:
                     # Print message, see above
                     message: |-
                         Radon level is too high!
                         Sensor: %d, %s
-                        Level: %v'
+                        Level: %v
 
 
 ######## Test support ########
