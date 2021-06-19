@@ -42,7 +42,7 @@ The following hardware components are required to run the Wave Plus Bridge:
 
 It should be ensured that the Wave Plus devices run the latest firmware. To do so, they should have been connected once to the official Airthings IPhone/Android application.
 
-The tool has been tested on a Rasperry Pi nano W and on a Raspberry Pi 4, both running on Raspbian Buster. Two Wave Plus devices have been simultaneously accessed.
+The tool has been tested on a Raspberry Pi Zero W and on a Raspberry Pi 4, both running on Raspbian Buster. Two Wave Plus devices have been simultaneously accessed.
 
 
 ## Software Requirements
