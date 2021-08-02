@@ -1,4 +1,4 @@
-# Airthings **Wave Plus Bridge** to Wifi/LAN
+# Airthings **Wave Plus Bridge** to Wifi/LAN and MQTT
 
 This tool provides a bridge between one or multiple **Airthings Wave Plus** sensors and the **Wifi/LAN** network, using a **Raspberry Pi** that supports Bluetooth Low Energy (BLE). In detail, the bridge provides the following features:
  
