@@ -49,7 +49,7 @@ class _LogDbCsv:
     # Python string encoding
     ENCODING = "utf-8"
 
-    # Size of the label line
+    # Initial size of the label line
     CSV_HEADER_ROW_LENGTH = 2048
 
     # Initial file chunk load size that is dynamically increased
@@ -740,7 +740,7 @@ class LogDB:
             data_matrix.append(
                             self.data[label] if label in self.data else None)
 
-        # Get the constrainted index range
+        # Get the constrained index range
         index_range = self.get_index_range(start, end)
 
         # Process the section decimation specification
