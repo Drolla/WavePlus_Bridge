@@ -472,7 +472,7 @@ Install the Python3 packages that are missing to run the Wave Plus Bridge:
 ```
 sudo pip3 install PyYAML
 sudo pip3 install bluepy
-sudo pip install paho-mqtt
+sudo pip3 install paho-mqtt
 ```
 
 # Related topics #
