@@ -9,6 +9,8 @@ This tool provides a bridge between one or multiple **Airthings Wave Plus** sens
   - Exposure of the sensor data via a JSON API
 * Email alerts
   - High flexibility in specifying alert conditions
+* MQTT publishing
+  - Optional publishing of the sensor data to an MQTT broker
 * Logging of the sensor data in a CSV file
 
 The tool runs with Python 3.x. It can be installed as a service that is launched automatically when the Raspberry Pi boots.
@@ -52,6 +54,7 @@ The following software packages need to be installed on the Raspberry Pi:
 * Python 3
 * The Python 3 library BluePy
 * The Python 3 library yaml (PyYAML)
+* The Python 3 library paho.mqtt (if MQTT publishing is required)
 
 The tool has been tested with Python 3.7.2 and BluePy 1.3.0.
 
@@ -259,6 +262,51 @@ alerts:
                         Level: %v'
 ```
 
+### MQTT publishing
+
+The sensor data can be published to an MQTT server. To do so, the MQTT broker, the parameters to setup the connection to it, as well as the devices and sensors that should be exposed, have to be specified in the following way:
+
+```
+mqtt:
+    # MQTT broker host IP address
+    host: mqtt.eclipseprojects.io
+
+    # MQTT broker port
+    port: 1883
+
+    # Optional client ID
+    # client_id: clientId-clxHpr9
+    
+    # Optional authentication data composed by a user name and a password
+    # auth:
+    #     username: <username>
+    #     password: <password>
+    
+    # Optional TLS configuration parameters. If present, ca_certs is required, 
+    # all other all other parameters are optional, which results in the client 
+    # using the default behavior.
+    # tls:
+    #     ca_certs: <ca_certs>
+    #     certfile: <certfile>
+    #     keyfile: <keyfile>
+    #     tls_version: <tls_version>
+    #     ciphers: <ciphers>
+    
+    # MQTT topic root: The topics for the different parameters to publish will 
+    # be composed in the following way: <topic root>/<device>/<sensor>
+    topic: my_nice_home/waveplus_bridge
+
+    # List the Wave Plus devices and their sensors that should be published. A
+    # list of sensors to publish can be assigned to each device:
+    #    <devicename>: ['<sensor1>', '<sensor2'>, ...]
+    # The wildcard character '*' (enclosed in '') can be used to select all 
+    # sensors:
+    #    <devicename>: '*'
+    publish:
+        my_office: [radon_st, radon_lt]
+        my_living: '*'
+```
+
 
 # Wave Plus Bridge Installation
 
@@ -424,6 +472,7 @@ Install the Python3 packages that are missing to run the Wave Plus Bridge:
 ```
 sudo pip3 install PyYAML
 sudo pip3 install bluepy
+sudo pip install paho-mqtt
 ```
 
 # Related topics #

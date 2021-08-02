@@ -27,6 +27,7 @@
 # Module imports
 
 import sys
+assert sys.version_info >= (3, 0, 0), "Python 3.x required to run this program"
 import time
 import os
 import os.path
@@ -47,11 +48,14 @@ try:
 except:
     pass
 try:
-    import tests.waveplus_emulation as waveplus_emulation
-except:
-    pass
-
-assert sys.version_info >= (3, 0, 0), "Python 3.x required to run this program"
+    import paho.mqtt.client as mqtt_client
+    import paho.mqtt.publish as mqtt_publish
+except Exception as err:
+    print("MQTT service is not available:", err)
+if os.path.basename(os.getcwd()) == "tests":
+    sys.path.append(".")
+    import waveplus_emulation as waveplus_emulation
+    print("WavePlus emulation module loaded")
 
 #############################################
 # Argument and Configuration handling
@@ -361,6 +365,7 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         """Handler method for the GET requests"""
+        print("GET:", self.path)
 
         # Default HTTP response and content type.
         http_response = 200
@@ -523,7 +528,8 @@ class Actions:
         smtp_config: SMTP server configuration dictionary
         alerts_config: Alerts configuration dictionary
     
-    The files waveplus_bridge.yaml and README.md for details, provides explanations about the two arguments.
+    The files waveplus_bridge.yaml and README.md provides details about the two 
+    configuration arguments.
     """
 
     def __init__(self, smtp_config, alerts_config):
@@ -586,6 +592,81 @@ class Actions:
         if error_msg is not None:
             raise Exception(error_msg)
 
+
+#############################################
+# MQTT publishing
+#############################################
+
+class MqttPublisher:
+    """MQTT publisher class
+    
+    This class manages the optional publishing of the sensor data to an MQTT
+    broker.
+
+    Args:
+        mqtt_config: MQTT configuration dictionary
+    
+    The files waveplus_bridge.yaml and README.md provide explanations about the
+    configuration options.
+    """
+
+    def __init__(self, config):
+        # Store the configuration options and complete them if necessary
+        self.cfg_host = config["host"]
+        self.cfg_port = config["port"]
+        self.cfg_topic = config["topic"].split("/") \
+                if "topic" in config else []
+        self.cfg_client_id = config["client_id"] \
+                if "client_id" in config else None
+        self.cfg_auth = config["auth"] \
+                if "auth" in config else None
+        self.cfg_tls = config["tls"] \
+                if "tls" in config else None
+        self.cfg_publish = config["publish"]
+    
+    def publish(self, data):
+        """Publish updated sensor levels
+        
+        This method needs to be called each sensor acquisition period. It loops
+        over all sensor data, checks if a sensor value has to be published,
+        creates the MQTT message and submits it to an MQTT broker.
+        
+        Args:
+            data: Sensor data structure of all devices
+        """
+        
+        # Generation of the list of MQTT messages
+        mqtt_msgs = []
+        for device in data:
+            # Check if a device has to be published
+            if device in self.cfg_publish:
+                sensor_filter = self.cfg_publish[device]
+            elif "*" in self.cfg_publish:
+                sensor_filter = self.cfg_publish["*"]
+            else:
+                continue
+            
+            for sensor in data[device]:
+                # Check if a sensor of a device has to be published
+                if sensor not in sensor_filter and \
+                        "*" not in sensor_filter:
+                    continue
+
+                # Extend the existing message with the current sensor data
+                mqtt_msgs.append({
+                    "topic": "/".join(self.cfg_topic + [device, sensor]),
+                    "payload": data[device][sensor]})
+
+        # Publish the sensor data to the MQTT broker
+        # print("  ->", mqtt_msgs)
+        mqtt_publish.multiple(
+            mqtt_msgs,
+            hostname=self.cfg_host, port=self.cfg_port,
+            client_id=self.cfg_client_id, keepalive=60, will=None,
+            auth=self.cfg_auth, tls=self.cfg_tls,
+            protocol=mqtt_client.MQTTv311, transport="tcp")
+
+
 #############################################
 # Main
 #############################################
@@ -628,6 +709,7 @@ if __name__ == "__main__":
 
     # Data logging, optionally into a CSV file
     lprint("Opening CSV data log file", config.csv, file=logf)
+    ldb = None
     try:
         log_labels = ["humidity", "radon_st", "radon_lt",
                       "temperature", "pressure", "co2", "voc"]
@@ -659,6 +741,7 @@ if __name__ == "__main__":
             sys.exit(1)
     
     # Configure the mail alert
+    actions = None
     if "alerts" in config:
         lprint("Setup email alerts", file=logf)
         if "smtp_server" not in config:
@@ -670,6 +753,19 @@ if __name__ == "__main__":
             
         except Exception as err:
             lprint("  Unable to setup the alerts:", err, file=logf)
+            import traceback; traceback.print_exc(file=logf)
+            sys.exit(1)
+
+    # Setup MQTT publishing
+    mqtt_publisher = None
+    if "mqtt" in config and "paho.mqtt.publish" in sys.modules:
+        lprint("Setup MQTT publishing", file=logf)
+        try:
+            mqtt_publisher = MqttPublisher(config.mqtt)
+            lprint("  Done", file=logf)
+            
+        except Exception as err:
+            lprint("  Unable to setup MQTT publishing:", err, file=logf)
             import traceback; traceback.print_exc(file=logf)
             sys.exit(1)
 
@@ -716,17 +812,27 @@ if __name__ == "__main__":
                             file=logf)
 
             # Store data in log database
-            try:
-                ldb.insert(sensor_data, tstamp=int(iteration_start_time))
-            except Exception as err:
-                lprint("Failed to log the data:", err, file=logf)
+            if ldb is not None:
+                try:
+                    ldb.insert(sensor_data, tstamp=int(iteration_start_time))
+                except Exception as err:
+                    lprint("Failed to log the data:", err, file=logf)
             
             # Check the sensor data level and trigger mail alerts
-            try:
-                actions.check_levels(sensor_data)
-            except Exception as err:
-                lprint("Failed to trigger alerts:", err, file=logf)
-                #import traceback; traceback.print_exc(file=logf)
+            if actions is not None:
+                try:
+                    actions.check_levels(sensor_data)
+                except Exception as err:
+                    lprint("Failed to trigger alerts:", err, file=logf)
+                    #import traceback; traceback.print_exc(file=logf)
+
+            # Publish eventual sensor data updates to a MQTT broker
+            if mqtt_publisher is not None:
+                try:
+                    mqtt_publisher.publish(sensor_data)
+                except Exception as err:
+                    lprint("Failed to publish to MQTT broker:", err, file=logf)
+                    import traceback; traceback.print_exc(file=logf)
 
             # Wait until the next iteration has to start
             iteration_start_time += config.period
