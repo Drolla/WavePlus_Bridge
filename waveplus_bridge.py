@@ -659,12 +659,13 @@ class MqttPublisher:
 
         # Publish the sensor data to the MQTT broker
         # print("  ->", mqtt_msgs)
-        mqtt_publish.multiple(
-            mqtt_msgs,
-            hostname=self.cfg_host, port=self.cfg_port,
-            client_id=self.cfg_client_id, keepalive=60, will=None,
-            auth=self.cfg_auth, tls=self.cfg_tls,
-            protocol=mqtt_client.MQTTv311, transport="tcp")
+        if mqtt_msgs:
+            mqtt_publish.multiple(
+                mqtt_msgs,
+                hostname=self.cfg_host, port=self.cfg_port,
+                client_id=self.cfg_client_id, keepalive=60, will=None,
+                auth=self.cfg_auth, tls=self.cfg_tls,
+                protocol=mqtt_client.MQTTv311, transport="tcp")
 
 
 #############################################
