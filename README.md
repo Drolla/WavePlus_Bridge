@@ -54,9 +54,9 @@ The following software packages need to be installed on the Raspberry Pi:
 * Python 3
 * The Python 3 library BluePy
 * The Python 3 library yaml (PyYAML)
-* The Python 3 library paho.mqtt (if MQTT publishing is required)
+* The Python 3 library paho-mqtt (if MQTT publishing is required)
 
-The tool has been tested with Python 3.7.2 and BluePy 1.3.0.
+The tool has been tested with Python 3.7.2, BluePy 1.3.0 and paho-mqtt 1.5.1.
 
 The sections [Raspbian installation](#raspbian-installation) and [Python Library Installation](#python-library-installation) provide support for the installation of the Raspbian OS and the Python library installation.
 
