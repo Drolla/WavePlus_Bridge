@@ -709,26 +709,27 @@ if __name__ == "__main__":
         PerformanceCheck.file = logf
 
     # Data logging, optionally into a CSV file
-    lprint("Opening CSV data log file", config.csv, file=logf)
     ldb = None
-    try:
-        log_labels = ["humidity", "radon_st", "radon_lt",
-                      "temperature", "pressure", "co2", "voc"]
-        pc = PerformanceCheck("CSV file loading")
-        ldb=logdb.LogDB(
-                {config.name[sn]:log_labels for sn in config.sn},
-                config.csv,
-                number_retention_records=config.data_retention/config.period)
-        del pc
-        lprint("  Done", file=logf)
-    except PermissionError:
-        lprint("  No permission to open file!", config.csv, file=logf)
-    except Exception as err:
-        lprint("  Error accessing CSV file!", config.csv, ":", err, file=logf)
-        if logf != sys.stdout:
-            lprint("Error accessing CSV file!", config.csv, ":", err,
-                    file=sys.stderr)
-        sys.exit(1)
+    if config.csv is not None and config.csv != "":
+        lprint("Opening CSV data log file", config.csv, file=logf)
+        try:
+            log_labels = ["humidity", "radon_st", "radon_lt",
+                          "temperature", "pressure", "co2", "voc"]
+            pc = PerformanceCheck("CSV file loading")
+            ldb=logdb.LogDB(
+                    {config.name[sn]:log_labels for sn in config.sn},
+                    config.csv,
+                    number_retention_records=config.data_retention/config.period)
+            del pc
+            lprint("  Done", file=logf)
+        except PermissionError:
+            lprint("  No permission to open file!", config.csv, file=logf)
+        except Exception as err:
+            lprint("  Error accessing CSV file!", config.csv, ":", err, file=logf)
+            if logf != sys.stdout:
+                lprint("Error accessing CSV file!", config.csv, ":", err,
+                        file=sys.stderr)
+            sys.exit(1)
 
     # Start the HTTP web server
     if config.port is not None:
