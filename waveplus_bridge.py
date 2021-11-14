@@ -85,8 +85,8 @@ class ReadConfiguration:
 
         # Apply some default configuration
         for key, value in {
-                "period": str(120),
-                "data_retention": str(31*24*3600) # 31 days
+                "period": 120,
+                "data_retention": 31*24*3600 # 31 days
         }.items():
             if config[key] is None:
                 config[key] = value
@@ -136,10 +136,10 @@ class ReadConfiguration:
         parser = argparse.ArgumentParser(
                 description="Wave Plus to Wifi/LAN Bridge")
         parser.add_argument(
-                "--period",
+                "--period", type=int,
                 help="Time in seconds between reading the sensor values")
         parser.add_argument(
-                "--data_retention",
+                "--data_retention", type=int,
                 help="Data retention time in seconds")
         parser.add_argument(
                 "sn", metavar="sn", type=str, nargs="*",
