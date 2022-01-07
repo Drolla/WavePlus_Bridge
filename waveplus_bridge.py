@@ -365,7 +365,6 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         """Handler method for the GET requests"""
-        print("GET:", self.path)
 
         # Default HTTP response and content type.
         http_response = 200
@@ -380,7 +379,7 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
         elif self.path=="/data":
             response_raw_data = {
                 "current_time": int(time.time()),
-                "devices": all_sensor_data
+                "devices": all_sensor_data_ts
             }
             http_body = json.dumps(response_raw_data)
             http_content_type ="application/json"
@@ -474,7 +473,6 @@ class PrintAction:
         
         message = self.message.replace("%v", str(value)).replace("%d", device)\
                               .replace("%s", sensor)
-        print(message)
         print(message, file=logf)
 
 class MailAction:
@@ -720,7 +718,8 @@ if __name__ == "__main__":
                 config.csv,
                 number_retention_records=config.data_retention/config.period)
         del pc
-        lprint("  Done", file=logf)
+        lprint("  Done ({} records read)".format(ldb.get_nbr_active_records()),
+                file=logf)
     except PermissionError:
         lprint("  No permission to open file!", config.csv, file=logf)
     except Exception as err:
@@ -736,7 +735,7 @@ if __name__ == "__main__":
         try:
             server = ThreadedHTTPServer(
                     ("", int(config.port)), HttpRequestHandler)
-            lprint("  Done", config.port, file=logf)
+            lprint("  Done", file=logf)
         except:
             lprint("  Unable to open HTTP port", config.port, "!", file=logf)
             sys.exit(1)
@@ -771,10 +770,8 @@ if __name__ == "__main__":
             sys.exit(1)
 
     # Initialize the access to all Wave Plus devices
-    wp_devices = []
-    all_sensor_data = {}
-
     lprint("Setup WavePlus device access", file=logf)
+    wp_devices = []
     for sn in config.sn:
         if not config.emulation:
             wp_device = WavePlus(sn, config.name[sn])
@@ -782,6 +779,10 @@ if __name__ == "__main__":
             wp_device = waveplus_emulation.WavePlus(sn, config.name[sn])
         wp_devices.append(wp_device)
     lprint("  Done", file=logf)
+
+    # Sensor data dictionary: Contains the most recent data of _all_ sensors,
+    # including the timestamps (ts)
+    all_sensor_data_ts = {}
 
     # Main loop
     lprint("Start main loop. Press ctrl+C to exit program!", file=logf)
@@ -792,20 +793,26 @@ if __name__ == "__main__":
             iteration_start_time -= \
                     (nbr_pre_emulated-len(ldb.data["Time"]))*config.period
     while True:
+        # Sensor data dictionaries: Contains the most recent data of the 
+        # available sensors that responded during the current iteration, with 
+        # and without the timestamps (ts, no_ts)
+        sensor_data_no_ts = {}
+        sensor_data_ts = {}
+        
         try:
-            sensor_data = {}
             for wp_device in wp_devices:
                 try:
-                    # read values
+                    # Read the senor values
                     wp_device.connect()
                     sensors = wp_device.read()
                     sdata = sensors.get()
                     wp_device.disconnect()
                 
-                    # Store result
-                    sensor_data[wp_device.name] = sdata.copy()
+                    # Store the sensor values
+                    sensor_data_no_ts[wp_device.name] = sdata.copy()
                     sdata["update_time"] = int(time.time())
-                    all_sensor_data[wp_device.name] = sdata
+                    sensor_data_ts[wp_device.name] = sdata
+                    all_sensor_data_ts[wp_device.name] = sdata
 
                 except Exception as err:
                     lprint("Failed to communicate with device",
@@ -815,14 +822,14 @@ if __name__ == "__main__":
             # Store data in log database
             if ldb is not None:
                 try:
-                    ldb.insert(sensor_data, tstamp=int(iteration_start_time))
+                    ldb.insert(sensor_data_no_ts, tstamp=int(iteration_start_time))
                 except Exception as err:
                     lprint("Failed to log the data:", err, file=logf)
             
             # Check the sensor data level and trigger mail alerts
             if actions is not None:
                 try:
-                    actions.check_levels(sensor_data)
+                    actions.check_levels(sensor_data_no_ts)
                 except Exception as err:
                     lprint("Failed to trigger alerts:", err, file=logf)
                     #import traceback; traceback.print_exc(file=logf)
@@ -830,10 +837,10 @@ if __name__ == "__main__":
             # Publish eventual sensor data updates to a MQTT broker
             if mqtt_publisher is not None:
                 try:
-                    mqtt_publisher.publish(sensor_data)
+                    mqtt_publisher.publish(sensor_data_ts)
                 except Exception as err:
                     lprint("Failed to publish to MQTT broker:", err, file=logf)
-                    import traceback; traceback.print_exc(file=logf)
+                    #import traceback; traceback.print_exc(file=logf)
 
             # Wait until the next iteration has to start
             iteration_start_time += config.period
