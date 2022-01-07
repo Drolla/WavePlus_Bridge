@@ -164,7 +164,7 @@ alerts:
 # has to be specified.
 mqtt:
     # MQTT broker host IP address
-    host: mqtt.eclipseprojects.io
+    host: test.mosquitto.org
 
     # MQTT broker port
     port: 1883

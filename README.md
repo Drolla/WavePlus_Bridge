@@ -269,7 +269,7 @@ The sensor data can be published to an MQTT server. To do so, the MQTT broker, t
 ```
 mqtt:
     # MQTT broker host IP address
-    host: mqtt.eclipseprojects.io
+    host: test.mosquitto.org
 
     # MQTT broker port
     port: 1883
