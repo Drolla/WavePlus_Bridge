@@ -294,7 +294,10 @@ class _LogDbCsv:
                             ds[index] = value
                         else:
                             value = ds[index]
-        
+
+        # Move the write pointer to the file end
+        f.seek(0, 2)
+
         # That's it. Return the created data structure
         if self.DEBUG:
             print(" ", len(data_matrix[0]), "data records read (+ header line)")
@@ -681,6 +684,13 @@ class LogDB:
             self.get_abs_index(end, index_range) ]
         
         return index_range
+
+
+    def get_nbr_active_records(self):
+        """Get the number of records stored in the RAM
+        """
+        
+        return len(self.data["Time"])
 
 
     def get_csv(self, label_specs=".*",
