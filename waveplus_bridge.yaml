@@ -7,6 +7,9 @@
 # Update period: Time in seconds between reading the sensor values
 period: 120
 
+# retries: number of extra attempts to read from the device
+retries: 3
+
 # SN: List of 10-digit serial number of one or multiple Wave Plus devices (see 
 # under the magnetic backplate. Each number can be combined with a device 
 # nickname, separated by a column from the serial number 
