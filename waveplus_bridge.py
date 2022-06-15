@@ -822,9 +822,10 @@ if __name__ == "__main__":
                         # leave retry loop on success
                         break
                     except Exception as err:
-                        lprint("Failed to communicate with device",
-                                wp_device.sn, "/", wp_device.name, ":", err,
-                                file=logf)
+                        lprint("Failed to communicate with device (attempt",
+                            attempt, "of", config.retries + 1, ") ",
+                            wp_device.sn, "/", wp_device.name, ":", err,
+                            file=logf)
                         if not attempt > config.retries:
                             lprint("Retrying in", config.retry_delay, "seconds",
                                     file=logf)
