@@ -87,7 +87,8 @@ class ReadConfiguration:
         for key, value in {
                 "period": 120,
                 "data_retention": 31*24*3600, # 31 days
-                "retries": 3
+                "retries": 3,
+                "retry_delay": 1
         }.items():
             if config[key] is None:
                 config[key] = value
@@ -824,6 +825,10 @@ if __name__ == "__main__":
                         lprint("Failed to communicate with device",
                                 wp_device.sn, "/", wp_device.name, ":", err,
                                 file=logf)
+                        if not attempt > config.retries:
+                            lprint("Retrying in", config.retry_delay, "seconds",
+                                    file=logf)
+                            time.sleep(config.retry_delay)
 
             # Store data in log database
             if ldb is not None:

@@ -9,6 +9,8 @@ period: 120
 
 # retries: number of extra attempts to read from the device
 retries: 3
+# amount of time in seconds to wait before attempting reconnection
+retry_delay: 1
 
 # SN: List of 10-digit serial number of one or multiple Wave Plus devices (see 
 # under the magnetic backplate. Each number can be combined with a device 
