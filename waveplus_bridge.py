@@ -90,7 +90,7 @@ class ReadConfiguration:
                 "retries": 3,
                 "retry_delay": 1
         }.items():
-            if config[key] is None:
+            if key not in config or config[key] is None:
                 config[key] = value
         
         # Split the serial number definitions into the real serial numbers and
