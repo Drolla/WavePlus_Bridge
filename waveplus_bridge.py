@@ -86,7 +86,9 @@ class ReadConfiguration:
         # Apply some default configuration
         for key, value in {
                 "period": 120,
-                "data_retention": 31*24*3600 # 31 days
+                "data_retention": 31*24*3600, # 31 days
+                "retries": 3,
+                "retry_delay": 1
         }.items():
             if config[key] is None:
                 config[key] = value
@@ -801,23 +803,33 @@ if __name__ == "__main__":
         
         try:
             for wp_device in wp_devices:
-                try:
-                    # Read the senor values
-                    wp_device.connect()
-                    sensors = wp_device.read()
-                    sdata = sensors.get()
-                    wp_device.disconnect()
-                
-                    # Store the sensor values
-                    sensor_data_no_ts[wp_device.name] = sdata.copy()
-                    sdata["update_time"] = int(time.time())
-                    sensor_data_ts[wp_device.name] = sdata
-                    all_sensor_data_ts[wp_device.name] = sdata
+                attempt = 0
+                while attempt <= config.retries:
+                    attempt += 1
+                    try:
+                        # Read the senor values
+                        wp_device.connect()
+                        sensors = wp_device.read()
+                        sdata = sensors.get()
+                        wp_device.disconnect()
+                    
+                        # Store the sensor values
+                        sensor_data_no_ts[wp_device.name] = sdata.copy()
+                        sdata["update_time"] = int(time.time())
+                        sensor_data_ts[wp_device.name] = sdata
+                        all_sensor_data_ts[wp_device.name] = sdata
 
-                except Exception as err:
-                    lprint("Failed to communicate with device",
+                        # leave retry loop on success
+                        break
+                    except Exception as err:
+                        lprint("Failed to communicate with device (attempt",
+                            attempt, "of", config.retries + 1, ") ",
                             wp_device.sn, "/", wp_device.name, ":", err,
                             file=logf)
+                        if not attempt > config.retries:
+                            lprint("Retrying in", config.retry_delay, "seconds",
+                                    file=logf)
+                            time.sleep(config.retry_delay)
 
             # Store data in log database
             if ldb is not None:
