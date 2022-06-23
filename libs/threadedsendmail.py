@@ -38,21 +38,24 @@ Example:
         --debug_level 1
 
 Copyright (C) 2020 Andreas Drollinger
-See the file "LICENSE" for information on usage and redistribution of 
+See the file "LICENSE" for information on usage and redistribution of
 this file, and for a DISCLAIMER OF ALL WARRANTIES.
 """
 
 import time
-import traceback
 from threading import Thread
 import queue
 import smtplib
 from email.message import EmailMessage
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class ThreadedSendMail:
     """Simple threaded class to send mails
-    
-    The constructor has various parameters to define the SMTP server 
+
+    The constructor has various parameters to define the SMTP server
     information and credentials. It creates a new thread that is used to send
     email messages that are initiated via the method 'send_mail'.
 
@@ -65,10 +68,11 @@ class ThreadedSendMail:
         user (string): Login user name (optional argument)
         password (string): Login user password (optional argument)
         debug_level (integer): Optional parameter. Used for debugging purposes.
-                The value is used to define the debug levels of the SMTP and 
-                SMTP_SSL classes of the smtplib module. 0 disables debug outputs
-                (default). If non-0, the module will work in a non-threaded way.
-    
+                The value is used to define the debug levels of the SMTP and
+                SMTP_SSL classes of the smtplib module. 0 disables debug
+                outputs (default). If non-0, the module will work in a
+                non-threaded way.
+
     Example:
         sm = threadedsendmail.ThreadedSendMail(
                 server="mail.server.com",
@@ -76,14 +80,14 @@ class ThreadedSendMail:
                 security="SSL",
                 user="wave@plus.com",
                 password="bridge123")
-        
+
         sm.send_mail(
                 "wave.plus@myhome.com",
                 "liam.smith@family.com",
                 "Sensor alert",
                 "Sensor triggered high measurement data!")
     """
-    
+
     TIMEOUT = 1
 
     def __init__(self,
@@ -95,22 +99,23 @@ class ThreadedSendMail:
         self.user = user
         self.password = password
         self.debug_level = debug_level
-        
+
         # Enable threaded mode only in non-debug mode
         if debug_level == 0:
             self.queue = queue.Queue()
             thread = Thread(target=self._queue_handler)
             thread.daemon = True
             thread.start()
-    
-    # See: https://stackoverflow.com/questions/19033818/how-to-call-a-function-on-a-running-python-thread
+
+    # See: https://stackoverflow.com/questions/19033818/how-to-call-a-
+    #      function-on-a-running-python-thread
     def send_mail(self, from_address, to_address, subject, message):
         """Mail send message user command
-        
-        Add the mail send command to the thread queue in threaded mode. 
+
+        Add the mail send command to the thread queue in threaded mode.
         Otherwise launch the mail send command directly.
         """
-        
+
         if self.debug_level == 0:
             self.queue.put((self._send_mail,
                             [from_address, to_address, subject, message], {}))
@@ -119,7 +124,7 @@ class ThreadedSendMail:
 
     def _queue_handler(self):
         """Thread queue handler"""
-        
+
         while True:
             try:
                 function, args, kwargs = self.queue.get(timeout=self.TIMEOUT)
@@ -128,16 +133,16 @@ class ThreadedSendMail:
             except queue.Empty:
                 pass
             except Exception as err:
-                traceback.print_exc()
+                logger.exception("  Stack trace:")
 
     def _send_mail(self, from_address, to_address, subject, message):
         """Send mail service
-        
+
         Unless executed in debug mode, this method is executed in the separate
         thread. It establish connection to the SMTP server using optional
         encryption modes, and sends then the message to this server.
         """
-        
+
         msg = EmailMessage()
         msg['Subject'] = subject
         msg['From'] = from_address
@@ -146,7 +151,7 @@ class ThreadedSendMail:
         else:
             msg['To'] = to_address
         msg.set_content(message)
-        
+
         if self.security == "SSL":
             srv = smtplib.SMTP_SSL(self.server, self.port)
             srv.set_debuglevel(self.debug_level)
@@ -157,18 +162,20 @@ class ThreadedSendMail:
                 srv.ehlo()
                 srv.starttls()
                 srv.ehlo()
-        
+
         if self.user is not None and self.password is not None:
             srv.login(self.user, self.password)
 
         srv.send_message(msg)
         srv.quit()
-        print("Message sent to {} ({})".format(to_address, subject))
+        logger.info("Message sent to %s: %s", to_address, subject)
 
 
-####### Main ########
+#############################################
+# Main
+#############################################
 
-# Self test and SMTP mail server connection debugging. See file header for 
+# Self test and SMTP mail server connection debugging. See file header for
 # details.
 
 if __name__ == "__main__":
@@ -180,7 +187,7 @@ if __name__ == "__main__":
     required_args = parser.add_argument_group('required named arguments')
     parser.add_argument(
             "--port", type=int, help="SMTP server port, default=587",
-                      default=587)
+            default=587)
     parser.add_argument(
             "--security", type=str, help="SSL or TLS", default=None)
     parser.add_argument(
@@ -198,7 +205,7 @@ if __name__ == "__main__":
     required_args.add_argument(
             "--server", type=str, help="SMTP server address", required=True)
     required_args.add_argument(
-            "--to", type=str, help="To email list, separated with ','", 
+            "--to", type=str, help="To email list, separated with ','",
             required=True)
     required_args.add_argument(
             "--from", type=str, help="From address", required=True)
@@ -211,11 +218,11 @@ if __name__ == "__main__":
             security=config["security"],
             user=config["user"], password=config["password"],
             debug_level=config["debug_level"])
-    
+
     sm.send_mail(
             config["from"], config["to"],
             config["subject"], config["message"])
-    
+
     if config["debug_level"] == 0:
         sm.queue.join()
         print("Main: Queue is empty")
