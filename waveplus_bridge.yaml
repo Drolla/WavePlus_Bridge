@@ -7,9 +7,10 @@
 # Update period: Time in seconds between reading the sensor values
 period: 120
 
-# retries: number of extra attempts to read from the device
+# Number of extra attempts to read from the device after a connection failure
 retries: 3
-# amount of time in seconds to wait before attempting reconnection
+
+# Amount of time in seconds to wait before attempting reconnection
 retry_delay: 1
 
 # SN: List of 10-digit serial number of one or multiple Wave Plus devices (see 
@@ -25,6 +26,8 @@ sn:
 port: 80
 
 # Log file: Comment the following line to log all information to stdout.
+# For more sophisticated logging configurations, for example for debugging, see
+# section 'Debugging' of README.md.
 log: /var/log/waveplus_bridge.log
 
 
@@ -211,4 +214,3 @@ mqtt:
 
 # Uncomment the following lines to enable test features
 # emulation: True
-# report_performance: True
