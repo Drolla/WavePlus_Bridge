@@ -4,22 +4,21 @@
 # Airthings Wave Plus Bridge to Wifi/LAN
 ##########################################################################
 # waveplus_bridge.py - Wave Plus Bridge main program
-# 
+#
 # This file implements the following features of the Wave Plus Bridge:
-# 
+#
 #   * Sensor scan of one or multiple Wave Plus devices in a user definable
 #     interval
-#   * HTTP web server to expose the sensor data as HTML web page and in JSON 
+#   * HTTP web server to expose the sensor data as HTML web page and in JSON
 #   * format
 #   * CSV logging of the sensor data
 #   * Configurable email alerts
 #
-# See the file "README.md" for details about installing, configuring and 
+# See the file "README.md" for details about installing, configuring and
 # running this program.
 ##########################################################################
 # Copyright (C) 2020 Andreas Drollinger
-# Portions Copyright (c) 2018 Airthings
-# See the file "LICENSE" for information on usage and redistribution of this 
+# See the file "LICENSE" for information on usage and redistribution of this
 # file, and for a DISCLAIMER OF ALL WARRANTIES.
 ##########################################################################
 
@@ -27,12 +26,12 @@
 # Module imports
 
 import sys
-assert sys.version_info >= (3, 0, 0), "Python 3.x required to run this program"
 import time
 import os
 import os.path
 import re
-import struct
+import logging
+import logging.config
 import argparse
 import yaml
 import json
@@ -42,20 +41,24 @@ from http.server import BaseHTTPRequestHandler
 from libs.threadedhttpserver import ThreadedHTTPServer
 import libs.logdb as logdb
 import libs.trigger as trigger
-import libs.threadedsendmail as threadedsendmail
+from libs.threadedsendmail import ThreadedSendMail
+from libs.performancecheck import PerformanceCheck
 try:
-    from bluepy.btle import UUID, Peripheral, Scanner, DefaultDelegate
+    import libs.waveplus as waveplus
 except:
     pass
+if os.path.basename(os.getcwd()) == "tests":
+    sys.path.append(".")
+    import waveplus_emulation as waveplus_emulation
 try:
     import paho.mqtt.client as mqtt_client
     import paho.mqtt.publish as mqtt_publish
 except Exception as err:
     print("MQTT service is not available:", err)
-if os.path.basename(os.getcwd()) == "tests":
-    sys.path.append(".")
-    import waveplus_emulation as waveplus_emulation
-    print("WavePlus emulation module loaded")
+assert sys.version_info >= (3, 0, 0), "Python 3.x required to run this program"
+
+logger = logging.getLogger(__name__)
+
 
 #############################################
 # Argument and Configuration handling
@@ -63,15 +66,15 @@ if os.path.basename(os.getcwd()) == "tests":
 
 class ReadConfiguration:
     """Wave Plus Bridge configuration handling
-    
-    Reads the configuration provided as command line arguments, and completes 
+
+    Reads the configuration provided as command line arguments, and completes
     them by definitions provided by Yaml files.
     The configuration is held in form of a dictionary.
     """
 
     def __init__(self):
         # Read the configuration from the command line arguments
-        config= vars(self.parse_arguments())
+        config = vars(self.parse_arguments())
         config["graph_decimations"] = None
 
         # Complete the configurations with the ones defined by the Yaml file
@@ -86,13 +89,13 @@ class ReadConfiguration:
         # Apply some default configuration
         for key, value in {
                 "period": 120,
-                "data_retention": 31*24*3600, # 31 days
                 "retries": 3,
-                "retry_delay": 1
+                "retry_delay": 1,
+                "data_retention": 31*24*3600,  # 31 days
         }.items():
             if key not in config or config[key] is None:
                 config[key] = value
-        
+
         # Split the serial number definitions into the real serial numbers and
         # device names: 2931234567, cellar -> sn=2931234567, name=cellar
         sn_defs = config['sn']
@@ -101,7 +104,7 @@ class ReadConfiguration:
         for sn_def in sn_defs:
             m = re.match(r'\s*(\w*)[\s,:;]*(.*)', str(sn_def))
             sn = m.group(1)
-            name = m.group(2) if m.lastindex==2 else sn
+            name = m.group(2) if m.lastindex == 2 else sn
             config['sn'].append(sn)
             config['name'][sn] = name
 
@@ -114,7 +117,7 @@ class ReadConfiguration:
 
     def read_yaml_config_file(self, file):
         """ Reads a YAML configuration file
-        
+
         If the configuration file does not exist it returns without generating
         an error.
         """
@@ -125,8 +128,8 @@ class ReadConfiguration:
         file = os.path.expanduser(file)
         if not os.path.exists(file):
             return {}
-        print("Read configuration file", file)
-        
+        logger.info("Read configuration file '%s'", file)
+
         # Read the file
         with open(file, "r") as yamlfile:
             cfg = yaml.load(yamlfile, Loader=yaml.SafeLoader)
@@ -134,7 +137,7 @@ class ReadConfiguration:
 
     def parse_arguments(self):
         """Parses the command line arguments"""
-        
+
         parser = argparse.ArgumentParser(
                 description="Wave Plus to Wifi/LAN Bridge")
         parser.add_argument(
@@ -146,201 +149,34 @@ class ReadConfiguration:
         parser.add_argument(
                 "sn", metavar="sn", type=str, nargs="*",
                 help="""10-digit serial number of a Wave Plus device (see under
-                        the magnetic backplate. This number can be combined 
-                        with a device nickname, separated by a column from the 
+                        the magnetic backplate. This number can be combined
+                        with a device nickname, separated by a column from the
                         serial number ("2931234567, my_office")""")
-        parser.add_argument("--port",
-                help="Port of the HTTP web server")
-        parser.add_argument("--csv",
-                help="CSV file to store data")
-        parser.add_argument("--log",
-                help="Log file. If not specified the stdout is used")
-        parser.add_argument("--config",
-                help="YAML configuration file")
-        parser.add_argument("--emulation", action='store_true', default=None,
-                help="""Emulates the connection with a WavePlus device. This allows
-                        testing all other features, like data logging, HTTP
-                        service, etc.""")
-        parser.add_argument("--report_performance",
-                action='store_true', default=None,
-                help="""Reports the execution time of some tasks, like the CSV
-                        file loading, CVS file creation for an HTTP query,
-                        etc.""")
+        parser.add_argument(
+                "--port", help="Port of the HTTP web server")
+        parser.add_argument(
+                "--csv", help="CSV file to store data")
+        parser.add_argument(
+                "--log", help="Log file. If not specified the stdout is used")
+        parser.add_argument(
+                "--config", help="YAML configuration file")
+        parser.add_argument(
+                "--emulation", action='store_true', default=None,
+                help="""Emulates the connection with a WavePlus device. This
+                        allows testing all other features, like data logging,
+                        HTTP service, etc.""")
 
         return parser.parse_args()
 
     def __getitem__(self, key):
         return self.__dict__[key]
+
     def __repr__(self):
         return repr(self.__dict__)
+
     def __iter__(self):
         for x in self.__dict__:
             yield x
-
-
-#############################################
-# Performance reporting
-#############################################
-
-class PerformanceCheck():
-    """Tasks performance checking
-    
-    This class provides the tool to check the performance of tasks. It sets a 
-    time anchor when the object is created and it calculates and reports the 
-    passed time when the object is deleted again.
-    """
-    
-    # The performance check and report has to be actively activated
-    check_active = False
-    file = sys.stdout
-    
-    def __init__(self, task_description):
-        if not self.check_active:
-            return
-        self.start_time = time.time()
-        self.task_description = task_description
-
-    def __del__(self):
-        if not self.check_active:
-            return
-        execution_time_ms = 1000*(time.time()-self.start_time)
-        print(("Performance check, {}: {:.3f}ms").
-               format(self.task_description, execution_time_ms), file=self.file)
-
-#############################################
-# Class WavePlus and Sensors
-#############################################
-
-# The two classes, WavePlus and Sensors, is provided by Airthings under the 
-# MIT licenses. The code has been slightly modified. The original code is
-# available here:
-#                   https://github.com/Airthings/waveplus-reader
-
-class WavePlus():
-    # Serial number & device address cache that allows avoiding new scan phases
-    # if multiple WavePlus devices are used (static class variable)
-    sn2addr = {}
-
-    def __init__(self, sn, name=""):
-        self.periph = None
-        self.val_char = None
-        self.mac_addr = None
-        self.sn = sn
-        self.name = name if name != "" else sn
-        self.uuid = UUID("b42e2a68-ade7-11e4-89d3-123b93f75cba")
-    
-    def __del__(self):
-        self.disconnect()
-
-    def connect(self):
-        # Check if device is already known (from scanning another device)
-        if self.mac_addr is None and self.sn in WavePlus.sn2addr:
-            self.mac_addr = WavePlus.sn2addr[self.sn]
-            print("  Device {0} previously found, MAC address={1}".format(
-                    self.sn, self.mac_addr), file=logf)
-        
-        # Auto-discover device on first connection
-        if self.mac_addr is None:
-            scanner     = Scanner().withDelegate(DefaultDelegate())
-            searchCount = 0
-            while self.mac_addr is None and searchCount < 50:
-                devices      = scanner.scan(0.1) # 0.1 seconds scan period
-                searchCount += 1
-                for dev in devices:
-                    ManuData = dev.getValueText(255)
-                    sn = self.parse_serial_number(ManuData)
-                    if sn is not None and sn not in WavePlus.sn2addr:
-                        WavePlus.sn2addr[sn] = dev.addr
-                        
-                    # Serial number has been found. Register the other devices
-                    if sn == self.sn:
-                        self.mac_addr = dev.addr
-            
-            if self.mac_addr is None:
-                raise ConnectionError("Could not find device " + self.sn)
-
-            print("  Device {0} found, MAC address={1}".format(
-                self.sn, self.mac_addr), file=logf)
-        
-        # Connect to device
-        if self.periph is None:
-            self.periph = Peripheral(self.mac_addr)
-        if self.val_char is None:
-            self.val_char = self.periph.getCharacteristics(uuid=self.uuid)[0]
-        
-    def read(self):
-        if (self.val_char is None):
-            print("ERROR: Device is not connected:", self.sn, file=logf)
-            raise ConnectionError("Device is not connected" + self.sn)
-        rawdata = self.val_char.read()
-        rawdata = struct.unpack("BBBBHHHHHHHH", rawdata)
-        sensors = Sensors()
-        sensors.set(rawdata)
-        return sensors
-    
-    def disconnect(self):
-        if self.periph is not None:
-            try:
-                self.periph.disconnect()
-            except:
-                pass
-            self.periph = None
-            self.val_char = None
-
-    @staticmethod
-    def parse_serial_number(RawHexStr):
-        if RawHexStr is None:
-            sn = None
-        else:
-            ManuData = bytearray.fromhex(RawHexStr)
-            if (((ManuData[1] << 8) | ManuData[0]) == 0x0334):
-                sn = ManuData[2] | (ManuData[3] << 8) \
-                   | (ManuData[4] << 16) | (ManuData[5] << 24)
-                sn = str(sn)
-            else:
-                sn = None
-        return sn
-
-
-class Sensors():
-    def __init__(self):
-        self.sensor_version = None
-        self.init_sensor_data()
-
-    def init_sensor_data(self):
-        self.sensor_data    = {}
-        for key in ("humidity", "radon_st", "radon_lt",
-                    "temperature", "pressure", "co2", "voc"):
-            self.sensor_data[key] = None
-
-    def set(self, rawData):
-        self.sensor_version = rawData[0]
-        if (self.sensor_version != 1):
-            print("ERROR: Unknown sensor version ({0})".format(
-                    self.sensor_version), file=logf)
-            self.init_sensor_data()
-            raise 
-        self.sensor_data = {
-            "humidity": rawData[1]/2.0,
-            "radon_st": self.conv2radon(rawData[4]),
-            "radon_lt": self.conv2radon(rawData[5]),
-            "temperature": rawData[6]/100.0,
-            "pressure": rawData[7]/50.0,
-            "co2": rawData[8]*1.0,
-            "voc": rawData[9]*1.0
-        }
-   
-    def conv2radon(self, radon_raw):
-        """
-        Validate or invalidate the radon value.
-        """
-        
-        if 0 <= radon_raw <= 16383:
-            return radon_raw
-        return  "N/A"
-
-    def get(self):
-        return self.sensor_data
 
 
 #############################################
@@ -349,14 +185,14 @@ class Sensors():
 
 class HttpRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler used for the HTTP/web server
-    
-    This HTTP request handler provides the application specific do_GET method 
+
+    This HTTP request handler provides the application specific do_GET method
     that responses in the following way:
        * If path is /: Redirect the browser to /ui/index.html
        * If path is /data: Provide the current sensor data in JSON format.
        * If path starts with /ui/: Provide the content of the related file
     """
-    
+
     # HTTP content type attributes related to specific file types
     CONTENT_TYPES = {
         '.html': "text/html",
@@ -364,13 +200,13 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
         '.css': "text/css",
         '': "application/octet-stream",
         }
-    
+
     def do_GET(self):
         """Handler method for the GET requests"""
 
         # Default HTTP response and content type.
         http_response = 200
-        http_content_type ="text/html"
+        http_content_type = "text/html"
 
         # If path is '/': Redirect the browser to /ui/index.html
         if self.path == "/":
@@ -378,13 +214,13 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
                         'content="0; URL=/ui/index.html" /></head>'
 
         # If path is /data: Provide the current sensor data in JSON format.
-        elif self.path=="/data":
+        elif self.path == "/data":
             response_raw_data = {
                 "current_time": int(time.time()),
                 "devices": all_sensor_data_ts
             }
             http_body = json.dumps(response_raw_data)
-            http_content_type ="application/json"
+            http_content_type = "application/json"
 
         # If path is /csv: Provide the current sensor data in CSV format.
         elif self.path.startswith("/csv"):
@@ -394,8 +230,8 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
                     device_pattern = device_pattern[3:]
                 else:
                     # device_pattern = eval(device_pattern, {}, {})
-                    device_pattern = [fnmatch.translate(dpat) 
-                                          for dpat in device_pattern.split(";")]
+                    device_pattern = [fnmatch.translate(dpat)
+                                      for dpat in device_pattern.split(";")]
             else:
                 device_pattern = ".*"
 
@@ -404,7 +240,7 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
                     device_pattern,
                     section_decimation_definitions=config["graph_decimations"])
             del pc
-            http_content_type ="application/csv"
+            http_content_type = "application/csv"
 
         # If path starts with /ui/: Provide the content of the related file
         elif self.path.startswith("/ui/") and ".." not in self.path:
@@ -413,9 +249,9 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
                 if file_extension not in self.CONTENT_TYPES:
                     file_extension = ""
                 http_content_type = self.CONTENT_TYPES[file_extension]
-                
-                f = open(os.path.dirname(os.path.abspath(__file__)) + os.sep + 
-                                         self.path)
+
+                f = open(os.path.dirname(os.path.abspath(__file__)) + os.sep +
+                         self.path)
                 http_body = f.read()
                 f.close()
             except IOError:
@@ -430,7 +266,6 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
                 http_body = "Result:<br>" + str(py_result)
             except Exception as err:
                 http_body = "Error:<br>" + str(err)
-                
 
         # Any other requests are invalid
         else:
@@ -456,7 +291,7 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
 
 class PrintAction:
     """Print action class
-    
+
     This class exposes the method 'action' that can be provided to the log
     method of the trigger module.
 
@@ -464,43 +299,45 @@ class PrintAction:
         print_action_config: Configuration dictionary (consult
                 waveplus_bridge.yaml or README.md for details)
     """
-    
+
     def __init__(self, print_action_config):
         self.message = "Sensor alert: Sensor: %d.%s, Level: %v"
         if "message" in print_action_config:
-            self.message = print_action_config["message"] \
-        
+            self.message = print_action_config["message"]
+
     def action(self, value, device, sensor):
         """Alert action function - prints the specified message"""
-        
+
         message = self.message.replace("%v", str(value)).replace("%d", device)\
                               .replace("%s", sensor)
-        print(message, file=logf)
+        logger.info(message)
+
 
 class MailAction:
     """Mail alert action class
-    
+
     This class exposes the method 'action' that can be provided to the log
     method of the trigger module.
 
     Args:
         smtp_config: SMTP server configuration dictionary
         mail_action_config: Mail action configuration dictionary
-    
-    The files waveplus_bridge.yaml and README.md for details, provides explanations about the two arguments.
+
+    The files waveplus_bridge.yaml and README.md for details, provides
+    explanations about the two arguments.
     """
 
     def __init__(self, smtp_config, mail_action_config):
         # Setup the mail service
-        self.alert_mail_service = threadedsendmail.ThreadedSendMail(
+        self.alert_mail_service = ThreadedSendMail(
                 server=smtp_config["server"],
                 port=smtp_config["port"],
-                security=smtp_config["security"] if "security" in smtp_config \
+                security=smtp_config["security"] if "security" in smtp_config
                                                  else None,
                 user=smtp_config["user"] if "user" in smtp_config else None,
-                password=smtp_config["password"] if "password" in smtp_config \
+                password=smtp_config["password"] if "password" in smtp_config
                                                  else None)
-        
+
         self.from_ = mail_action_config["from"]
         self.to = mail_action_config["to"]
         self.subject = "Sensor alert"
@@ -509,7 +346,7 @@ class MailAction:
             self.subject = mail_action_config["subject"]
         if "message" in mail_action_config:
             self.message = mail_action_config["message"]
-        
+
     def action(self, value, device, sensor):
         """Alert action function - sends a mail alert"""
 
@@ -518,17 +355,18 @@ class MailAction:
         self.alert_mail_service.send_mail(
                 self.from_, self.to, self.subject, message)
 
+
 class Actions:
     """Action/alert class
-    
-    This class provides an action trigger configurable via the YAML 
+
+    This class provides an action trigger configurable via the YAML
     configuration file.
 
     Args:
         smtp_config: SMTP server configuration dictionary
         alerts_config: Alerts configuration dictionary
-    
-    The files waveplus_bridge.yaml and README.md provides details about the two 
+
+    The files waveplus_bridge.yaml and README.md provides details about the two
     configuration arguments.
     """
 
@@ -537,7 +375,7 @@ class Actions:
         self.sources_trigger_actions_list = []
         for alert_config in (alerts_config if isinstance(alerts_config, list)
                              else [alerts_config]):
-            # For each alert, create the list of sources. A source may be 
+            # For each alert, create the list of sources. A source may be
             # defined as a string, or as a list of strings.
             sources = []
             for source in (alert_config["sources"]
@@ -545,11 +383,11 @@ class Actions:
                            else [alert_config["sources"]]):
                 sources.append(source.split(":"))
 
-            # For each alert, create the list of actions. An may be defined as 
+            # For each alert, create the list of actions. An may be defined as
             # a string, or as a list of strings.
             actions = alert_config["actions"]
             action_functions = []
-            for action in (actions if isinstance(actions, list) else [actions]):
+            for action in actions if isinstance(actions, list) else [actions]:
                 # Create the required action instance (mail or print)
                 if "mail" in action:
                     action_functions.append(
@@ -562,33 +400,33 @@ class Actions:
             trigger_action = trigger.Trigger(
                     alert_config["trigger"], action_functions)
 
-            # Register the trigger source configuration and trigger action 
+            # Register the trigger source configuration and trigger action
             # instance
             self.sources_trigger_actions_list.append([sources, trigger_action])
-    
+
     def check_levels(self, data):
         """Check sensor levels
-        
+
         This method needs to be called each sensor acquisition period. It loops
-        over all defined trigger actions and calls the log function of the 
-        trigger instance. Beside the sensor value, also the names of the related
-        device and sensor are provided to the log function.
-        
+        over all defined trigger actions and calls the log function of the
+        trigger instance. Beside the sensor value, also the names of the
+        related device and sensor are provided to the log function.
+
         Args:
             data: Sensor data structure of all devices
         """
-        
+
         error_msg = None
         for sta in self.sources_trigger_actions_list:
             for source in sta[0]:
-                #print('  source:', source, file=logf)
+                # print('  source:', source, file=log_file)
                 try:
                     value = data[source[0]][source[1]]
                     sta[1].log(value, source[0], source[1])
                 except Exception as err:
                     error_msg = "MailAlerts: Error accessing {}: {}".format(
                             ":".join(source), err)
-                    #import traceback; traceback.print_exc(file=logf)
+                    # logger.exception("  Stack trace:")
         if error_msg is not None:
             raise Exception(error_msg)
 
@@ -599,13 +437,13 @@ class Actions:
 
 class MqttPublisher:
     """MQTT publisher class
-    
+
     This class manages the optional publishing of the sensor data to an MQTT
     broker.
 
     Args:
         mqtt_config: MQTT configuration dictionary
-    
+
     The files waveplus_bridge.yaml and README.md provide explanations about the
     configuration options.
     """
@@ -614,27 +452,27 @@ class MqttPublisher:
         # Store the configuration options and complete them if necessary
         self.cfg_host = config["host"]
         self.cfg_port = config["port"]
-        self.cfg_topic = config["topic"].split("/") \
-                if "topic" in config else []
-        self.cfg_client_id = config["client_id"] \
-                if "client_id" in config else None
-        self.cfg_auth = config["auth"] \
-                if "auth" in config else None
-        self.cfg_tls = config["tls"] \
-                if "tls" in config else None
+        self.cfg_topic = config["topic"].split("/") if "topic" in config \
+                                                    else []
+        self.cfg_client_id = config["client_id"] if "client_id" in config \
+                                                 else None
+        self.cfg_auth = config["auth"] if "auth" in config \
+                                       else None
+        self.cfg_tls = config["tls"] if "tls" in config \
+                                     else None
         self.cfg_publish = config["publish"]
-    
+
     def publish(self, data):
         """Publish updated sensor levels
-        
+
         This method needs to be called each sensor acquisition period. It loops
         over all sensor data, checks if a sensor value has to be published,
         creates the MQTT message and submits it to an MQTT broker.
-        
+
         Args:
             data: Sensor data structure of all devices
         """
-        
+
         # Generation of the list of MQTT messages
         mqtt_msgs = []
         for device in data:
@@ -645,7 +483,7 @@ class MqttPublisher:
                 sensor_filter = self.cfg_publish["*"]
             else:
                 continue
-            
+
             for sensor in data[device]:
                 # Check if a sensor of a device has to be published
                 if sensor not in sensor_filter and \
@@ -672,122 +510,135 @@ class MqttPublisher:
 # Main
 #############################################
 
-def lprint(*args, **kwargs):
-    """Log print - Data/time prefixed print"""
-    
-    print(time.strftime("%Y-%m-%d %H:%M:%S -"), *args, **kwargs)
-
-
 if __name__ == "__main__":
 
     # Read and print the configuration
     try:
         config = ReadConfiguration()
     except AssertionError as err:
-        lprint("ERROR:", err)
+        print("Error:", err)
         sys.exit(1)
-    
+
     # Check that the bluepy module could be loaded if the application does not
     # run in emulated mode
     assert "bluepy" in sys.modules or config.emulation
 
-    # Define the log output
-    logf = sys.stdout
-    if config.log is not None and config.log != "":
-        try:
-            logf = open(config.log, "a", 1)
-            lprint("Logfile:", config.log)
-            lprint("Configuration:", config, file=logf)
-        except PermissionError:
-            lprint("No permission to open file", config.log, "use stdout instead")
-        except:
-            lprint("Unable to log to file", config.log, "use stdout instead")
-
-    # Enable performance check if requested
-    if config.report_performance:
-        PerformanceCheck.check_active = True
-        PerformanceCheck.file = logf
+    # Configure logging
+    if isinstance(config.log, dict):
+        logging_config = config.log
+    else:
+        # Define the default configuration for the case no YAML configuration
+        # file is provided. Use by default a file handler, otherwise a stream
+        # handler. If no port is defined, set the log level of this main
+        # application to 'debug'.
+        log_level = "DEBUG" if config.port is None else "INFO"
+        logging_config = {
+            'version': 1,
+            'formatters': {'default': {
+                'format':
+                    '%(asctime)s - %(name)13s[%(levelname)7s] - %(message)s',
+                'datefmt': '%Y-%m-%d %H:%M:%S'}},
+            'loggers': {
+                '__main__': {'level': log_level},
+                'libs': {'level': 'WARNING'}}
+        }
+        if config.log is not None and isinstance(config.log, str):
+            logging_config.update({
+                'root': {'level': 'WARNING', 'handlers': ['file']},
+                'handlers': {'file': {
+                    'level': 'DEBUG', 'formatter': 'default',
+                    'class': 'logging.FileHandler', 'filename': config.log,
+                    'encoding': 'utf8', 'mode': 'w'}}
+            })
+        else:
+            logging_config.update({
+                'root': {'level': 'WARNING', 'handlers': ['console']},
+                'handlers': {'console': {
+                    'level': 'DEBUG', 'formatter': 'default',
+                    'class': 'logging.StreamHandler',
+                    'stream': 'ext://sys.stdout'}}
+            })
+    logging.config.dictConfig(logging_config)
 
     # Data logging, optionally into a CSV file
-    lprint("Opening CSV data log file", config.csv, file=logf)
     ldb = None
-    try:
+    if config.csv is not None:
+        logger.info("Opening CSV data log file '%s'", config.csv)
         log_labels = ["humidity", "radon_st", "radon_lt",
                       "temperature", "pressure", "co2", "voc"]
-        pc = PerformanceCheck("CSV file loading")
-        ldb=logdb.LogDB(
-                {config.name[sn]:log_labels for sn in config.sn},
-                config.csv,
-                number_retention_records=config.data_retention/config.period)
-        del pc
-        lprint("  Done ({} records read)".format(ldb.get_nbr_active_records()),
-                file=logf)
-    except PermissionError:
-        lprint("  No permission to open file!", config.csv, file=logf)
-    except Exception as err:
-        lprint("  Error accessing CSV file!", config.csv, ":", err, file=logf)
-        if logf != sys.stdout:
-            lprint("Error accessing CSV file!", config.csv, ":", err,
-                    file=sys.stderr)
-        sys.exit(1)
+        try:
+            pc = PerformanceCheck("CSV file loading")
+            ldb = logdb.LogDB(
+                    {config.name[sn]: log_labels for sn in config.sn},
+                    config.csv,
+                    number_retention_records=
+                            config.data_retention/config.period)
+            del pc
+            logger.info("  %d records read", ldb.get_nbr_active_records())
+        except PermissionError:
+            logger.error("  No permission to open file %s!", config.csv)
+        except Exception as err:
+            logger.critical("  Error accessing file %s : %s", config.csv, err)
+            sys.exit(1)
 
     # Start the HTTP web server
     if config.port is not None:
-        lprint("Start HTTP/Web server on port", config.port, file=logf)
+        logger.info("Start HTTP/Web server on port %s", config.port)
         try:
             server = ThreadedHTTPServer(
                     ("", int(config.port)), HttpRequestHandler)
-            lprint("  Done", file=logf)
+            logger.info("  Done")
         except:
-            lprint("  Unable to open HTTP port", config.port, "!", file=logf)
+            logger.critical("  Unable to open HTTP port %s!", config.port)
             sys.exit(1)
-    
+
     # Configure the mail alert
     actions = None
     if "alerts" in config:
-        lprint("Setup email alerts", file=logf)
+        logger.info("Setup email alerts")
         if "smtp_server" not in config:
-            lprint("  No SMTP server is configured!", file=logf)
+            logger.critical("  No SMTP server is configured!")
             sys.exit(1)
         try:
             actions = Actions(config.smtp_server, config.alerts)
-            lprint("  Done", file=logf)
-            
+            logger.info("  Done")
+
         except Exception as err:
-            lprint("  Unable to setup the alerts:", err, file=logf)
-            import traceback; traceback.print_exc(file=logf)
+            logger.critical("  Unable to setup the alerts: %s", err)
+            logger.exception("  Stack trace:")
             sys.exit(1)
 
     # Setup MQTT publishing
     mqtt_publisher = None
     if "mqtt" in config and "paho.mqtt.publish" in sys.modules:
-        lprint("Setup MQTT publishing", file=logf)
+        logger.info("Setup MQTT publishing")
         try:
             mqtt_publisher = MqttPublisher(config.mqtt)
-            lprint("  Done", file=logf)
-            
+            logger.info("  Done")
+
         except Exception as err:
-            lprint("  Unable to setup MQTT publishing:", err, file=logf)
-            import traceback; traceback.print_exc(file=logf)
+            logger.critical("  Unable to setup MQTT publishing: %s", err)
+            logger.exception("  Stack trace:")
             sys.exit(1)
 
     # Initialize the access to all Wave Plus devices
-    lprint("Setup WavePlus device access", file=logf)
+    logger.info("Setup WavePlus device access")
     wp_devices = []
     for sn in config.sn:
         if not config.emulation:
-            wp_device = WavePlus(sn, config.name[sn])
+            wp_device = waveplus.WavePlus(sn, config.name[sn])
         else:
+            logger.warning("Use WavePlus emulation module")
             wp_device = waveplus_emulation.WavePlus(sn, config.name[sn])
         wp_devices.append(wp_device)
-    lprint("  Done", file=logf)
+    logger.info("  Done")
 
     # Sensor data dictionary: Contains the most recent data of _all_ sensors,
     # including the timestamps (ts)
     all_sensor_data_ts = {}
 
     # Main loop
-    lprint("Start main loop. Press ctrl+C to exit program!", file=logf)
+    logger.info("Start main loop. Press ctrl+C to exit program!")
     iteration_start_time = time.time()
     if config.emulation:
         nbr_pre_emulated = config.data_retention/config.period
@@ -795,80 +646,67 @@ if __name__ == "__main__":
             iteration_start_time -= \
                     (nbr_pre_emulated-len(ldb.data["Time"]))*config.period
     while True:
-        # Sensor data dictionaries: Contains the most recent data of the 
-        # available sensors that responded during the current iteration, with 
+        # Sensor data dictionaries: Contains the most recent data of the
+        # available sensors that responded during the current iteration, with
         # and without the timestamps (ts, no_ts)
         sensor_data_no_ts = {}
         sensor_data_ts = {}
-        
+
         try:
             for wp_device in wp_devices:
-                attempt = 0
-                while attempt <= config.retries:
-                    attempt += 1
-                    try:
-                        # Read the senor values
-                        wp_device.connect()
-                        sensors = wp_device.read()
-                        sdata = sensors.get()
-                        wp_device.disconnect()
-                    
-                        # Store the sensor values
-                        sensor_data_no_ts[wp_device.name] = sdata.copy()
-                        sdata["update_time"] = int(time.time())
-                        sensor_data_ts[wp_device.name] = sdata
-                        all_sensor_data_ts[wp_device.name] = sdata
+                logger.debug(
+                        "Reading sensor data for device %s", wp_device.name)
+                try:
+                    # Read the senor values
+                    sdata = wp_device.get()
 
-                        # leave retry loop on success
-                        break
-                    except Exception as err:
-                        lprint("Failed to communicate with device (attempt",
-                            attempt, "of", config.retries + 1, ") ",
-                            wp_device.sn, "/", wp_device.name, ":", err,
-                            file=logf)
-                        if not attempt > config.retries:
-                            lprint("Retrying in", config.retry_delay, "seconds",
-                                    file=logf)
-                            time.sleep(config.retry_delay)
+                    # Store the sensor values
+                    sensor_data_no_ts[wp_device.name] = sdata.copy()
+                    sdata["update_time"] = int(time.time())
+                    sensor_data_ts[wp_device.name] = sdata
+                    all_sensor_data_ts[wp_device.name] = sdata
+                    logger.debug("  -> %s", sdata)
+                except Exception as err:
+                    logger.error("Failed to communicate with device %s: %s",
+                                 wp_device.name, err)
 
             # Store data in log database
             if ldb is not None:
                 try:
-                    ldb.insert(sensor_data_no_ts, tstamp=int(iteration_start_time))
+                    ldb.insert(sensor_data_no_ts,
+                               tstamp=int(iteration_start_time))
                 except Exception as err:
-                    lprint("Failed to log the data:", err, file=logf)
-            
+                    logger.error("Failed to log the data: %s", err)
+
             # Check the sensor data level and trigger mail alerts
             if actions is not None:
                 try:
                     actions.check_levels(sensor_data_no_ts)
                 except Exception as err:
-                    lprint("Failed to trigger alerts:", err, file=logf)
-                    #import traceback; traceback.print_exc(file=logf)
+                    logger.error("Failed to trigger alerts: %s", err)
+                    # logger.exception("  Stack trace:")
 
             # Publish eventual sensor data updates to a MQTT broker
             if mqtt_publisher is not None:
                 try:
                     mqtt_publisher.publish(sensor_data_ts)
                 except Exception as err:
-                    lprint("Failed to publish to MQTT broker:", err, file=logf)
-                    #import traceback; traceback.print_exc(file=logf)
+                    logger.error("Failed to publish to MQTT broker: %s", err)
+                    # logger.exception("  Stack trace:")
 
             # Wait until the next iteration has to start
             iteration_start_time += config.period
             if not config.emulation:
                 time.sleep(max(0, iteration_start_time - time.time()))
-            elif len(ldb.data["Time"])>nbr_pre_emulated:
+            elif len(ldb.data["Time"]) > nbr_pre_emulated:
                 time.sleep(max(0, iteration_start_time - time.time()))
         except KeyboardInterrupt:
             break
         except Exception as err:
-            lprint("Error:", err, file=logf)
+            logger.error("Error: *s", err)
             pass
 
     # Close connections and open files
     for wp_device in wp_devices:
         del wp_device
-    lprint("WavePlus_bridge ended", file=logf)
-    if config.log is not None:
-        del logf
+    logger.warning("WavePlus_bridge ended")
