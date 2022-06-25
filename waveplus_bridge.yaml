@@ -65,13 +65,13 @@ smtp_server:
 
     # Mail server port, e.g. 25, 465, 587
     port: 465
-
+    
     # Options: SSL, TLS, or no definition (default)
     security: SSL
-
+    
     # Login user name
     user: wave@plus.com
-
+    
     # Login user password
     password: bridge123
 
@@ -179,12 +179,12 @@ mqtt:
 
     # Optional client ID
     # client_id: clientId-clxHpr9
-
+    
     # Optional authentication data composed by a user name and a password
     # auth:
     #     username: <username>
     #     password: <password>
-
+    
     # Optional TLS configuration parameters. If present, ca_certs is required, 
     # all other all other parameters are optional, which results in the client 
     # using the default behavior.
@@ -194,7 +194,7 @@ mqtt:
     #     keyfile: <keyfile>
     #     tls_version: <tls_version>
     #     ciphers: <ciphers>
-
+    
     # MQTT topic root: The topics for the different parameters to publish will 
     # be composed in the following way: <topic root>/<device>/<sensor>
     topic: my_nice_home/waveplus_bridge
