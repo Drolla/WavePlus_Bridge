@@ -1,3 +1,10 @@
+"""Unit test for the LogDB module
+
+Copyright (C) 2022 Andreas Drollinger
+See the file "LICENSE" for information on usage and redistribution of
+this file, and for a DISCLAIMER OF ALL WARRANTIES.
+"""
+
 import os
 import random
 import sys
