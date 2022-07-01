@@ -122,15 +122,14 @@ class ReadConfiguration:
         an error.
         """
 
-        # Ignore non existing files
+        # Raise an error if a Yaml config file is defined but not existing
         if file is None:
             return {}
         file = os.path.expanduser(file)
-        if not os.path.exists(file):
-            return {}
-        logger.info("Read configuration file '%s'", file)
+        assert os.path.exists(file), "Configuration file not existing: " + file
 
         # Read the file
+        logger.info("Read configuration file '%s'", file)
         with open(file, "r") as yamlfile:
             cfg = yaml.load(yamlfile, Loader=yaml.SafeLoader)
         return cfg
