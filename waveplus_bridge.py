@@ -220,45 +220,16 @@ def ContextSpecificHttpRequestHandler(all_sensor_data_ts, log_database,
 
             # If path is /data: Provide the current sensor data in JSON format.
             elif self.path == "/data":
-                response_raw_data = {
-                    "current_time": int(time.time()),
-                    "devices": all_sensor_data_ts
-                }
-                http_body = json.dumps(response_raw_data)
-                http_content_type = "application/json"
+                http_content_type, http_body = self.get_sensor_data_json()
 
             # If path is /csv: Provide the current sensor data in CSV format.
             elif self.path.startswith("/csv"):
-                if "?" in self.path:
-                    device_pattern = urllib.parse.unquote(self.path.split("?")[1])
-                    if device_pattern[0:3] == "re=":
-                        device_pattern = device_pattern[3:]
-                    else:
-                        # device_pattern = eval(device_pattern, {}, {})
-                        device_pattern = [fnmatch.translate(dpat)
-                                          for dpat in device_pattern.split(";")]
-                else:
-                    device_pattern = ".*"
-
-                pc = PerformanceCheck("CSV data creation")
-                http_body = log_database.get_csv(
-                        device_pattern,
-                        section_decimation_definitions=graph_decimations)
-                del pc
-                http_content_type = "application/csv"
+                http_content_type, http_body = self.get_sensor_history_csv()
 
             # If path starts with /ui/: Provide the content of the related file
             elif self.path.startswith("/ui/") and ".." not in self.path:
                 try:
-                    file_name, file_extension = os.path.splitext(self.path)
-                    if file_extension not in self.CONTENT_TYPES:
-                        file_extension = ""
-                    http_content_type = self.CONTENT_TYPES[file_extension]
-
-                    f = open(os.path.dirname(os.path.abspath(__file__)) + os.sep +
-                             self.path)
-                    http_body = f.read()
-                    f.close()
+                    http_content_type, http_body = self.get_file_content()
                 except IOError:
                     http_response = 404
                     http_body = "<h1>404 - File not found</h1>"
@@ -266,9 +237,7 @@ def ContextSpecificHttpRequestHandler(all_sensor_data_ts, log_database,
             # Debug support - allow executing commands
             elif self.path.startswith("/eval") and "?" in self.path:
                 try:
-                    py_function = urllib.parse.unquote(self.path.split("?")[1])
-                    py_result = eval(py_function)
-                    http_body = "Result:<br>" + str(py_result)
+                    http_content_type, http_body = self.get_eval()
                 except Exception as err:
                     http_body = "Error:<br>" + str(err)
 
@@ -284,6 +253,55 @@ def ContextSpecificHttpRequestHandler(all_sensor_data_ts, log_database,
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(bytes(http_body, "utf8"))
+
+        def get_sensor_data_json(self):
+            """Get all sensor data in JSON format"""
+
+            response_raw_data = {
+                "current_time": int(time.time()),
+                "devices": all_sensor_data_ts
+            }
+            return "application/json", json.dumps(response_raw_data)
+
+        def get_sensor_history_csv(self):
+            """Get the sensor history in CSV format"""
+
+            if "?" in self.path:
+                device_pattern = urllib.parse.unquote(self.path.split("?")[1])
+                if device_pattern[0:3] == "re=":
+                    device_pattern = device_pattern[3:]
+                else:
+                    # device_pattern = eval(device_pattern, {}, {})
+                    device_pattern = [fnmatch.translate(dpat)
+                                      for dpat in device_pattern.split(";")]
+            else:
+                device_pattern = ".*"
+
+            pc = PerformanceCheck("CSV data creation")
+            http_body = log_database.get_csv(
+                    device_pattern,
+                    section_decimation_definitions=graph_decimations)
+            del pc
+            return "application/csv", http_body
+
+        def get_file_content(self):
+            """Get the content of the specified file"""
+
+            file_name, file_extension = os.path.splitext(self.path)
+            if file_extension not in self.CONTENT_TYPES:
+                file_extension = ""
+            f = open(os.path.dirname(os.path.abspath(__file__)) + os.sep +
+                     self.path)
+            http_body = f.read()
+            f.close()
+            return self.CONTENT_TYPES[file_extension], http_body
+
+        def get_eval(self):
+            """Evaluate a Python expression"""
+
+            py_function = urllib.parse.unquote(self.path.split("?")[1])
+            py_result = eval(py_function)
+            return "text/html", "Result:<br>"+str(py_result)
 
         # Redefine the log_message method to suppress logging information.
         def log_message(self, format, *args):
