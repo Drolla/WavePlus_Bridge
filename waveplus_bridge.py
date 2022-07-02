@@ -182,106 +182,114 @@ class ReadConfiguration:
 # HTTP server
 #############################################
 
-class HttpRequestHandler(BaseHTTPRequestHandler):
-    """HTTP request handler used for the HTTP/web server
+# Use a factory class to add context to the HTTP request handler.
+# See: https://stackoverflow.com/questions/21631799
 
-    This HTTP request handler provides the application specific do_GET method
-    that responses in the following way:
-       * If path is /: Redirect the browser to /ui/index.html
-       * If path is /data: Provide the current sensor data in JSON format.
-       * If path starts with /ui/: Provide the content of the related file
-    """
+def ContextSpecificHttpRequestHandler(all_sensor_data_ts, log_database,
+                                      graph_decimations):
 
-    # HTTP content type attributes related to specific file types
-    CONTENT_TYPES = {
-        '.html': "text/html",
-        '.js': "application/javascript",
-        '.css': "text/css",
-        '': "application/octet-stream",
-        }
+    class HttpRequestHandler(BaseHTTPRequestHandler):
+        """HTTP request handler used for the HTTP/web server
 
-    def do_GET(self):
-        """Handler method for the GET requests"""
+        This HTTP request handler provides the application specific do_GET
+        method that responses in the following way:
+           * If path is /: Redirect the browser to /ui/index.html
+           * If path is /data: Provide the current sensor data in JSON format.
+           * If path starts with /ui/: Provide the content of the related file
+        """
 
-        # Default HTTP response and content type.
-        http_response = 200
-        http_content_type = "text/html"
-
-        # If path is '/': Redirect the browser to /ui/index.html
-        if self.path == "/":
-            http_body = '<head><meta http-equiv="refresh" ' + \
-                        'content="0; URL=/ui/index.html" /></head>'
-
-        # If path is /data: Provide the current sensor data in JSON format.
-        elif self.path == "/data":
-            response_raw_data = {
-                "current_time": int(time.time()),
-                "devices": all_sensor_data_ts
+        # HTTP content type attributes related to specific file types
+        CONTENT_TYPES = {
+            '.html': "text/html",
+            '.js': "application/javascript",
+            '.css': "text/css",
+            '': "application/octet-stream",
             }
-            http_body = json.dumps(response_raw_data)
-            http_content_type = "application/json"
 
-        # If path is /csv: Provide the current sensor data in CSV format.
-        elif self.path.startswith("/csv"):
-            if "?" in self.path:
-                device_pattern = urllib.parse.unquote(self.path.split("?")[1])
-                if device_pattern[0:3] == "re=":
-                    device_pattern = device_pattern[3:]
+        def do_GET(self):
+            """Handler method for the GET requests"""
+
+            # Default HTTP response and content type.
+            http_response = 200
+            http_content_type = "text/html"
+
+            # If path is '/': Redirect the browser to /ui/index.html
+            if self.path == "/":
+                http_body = '<head><meta http-equiv="refresh" ' + \
+                            'content="0; URL=/ui/index.html" /></head>'
+
+            # If path is /data: Provide the current sensor data in JSON format.
+            elif self.path == "/data":
+                response_raw_data = {
+                    "current_time": int(time.time()),
+                    "devices": all_sensor_data_ts
+                }
+                http_body = json.dumps(response_raw_data)
+                http_content_type = "application/json"
+
+            # If path is /csv: Provide the current sensor data in CSV format.
+            elif self.path.startswith("/csv"):
+                if "?" in self.path:
+                    device_pattern = urllib.parse.unquote(self.path.split("?")[1])
+                    if device_pattern[0:3] == "re=":
+                        device_pattern = device_pattern[3:]
+                    else:
+                        # device_pattern = eval(device_pattern, {}, {})
+                        device_pattern = [fnmatch.translate(dpat)
+                                          for dpat in device_pattern.split(";")]
                 else:
-                    # device_pattern = eval(device_pattern, {}, {})
-                    device_pattern = [fnmatch.translate(dpat)
-                                      for dpat in device_pattern.split(";")]
+                    device_pattern = ".*"
+
+                pc = PerformanceCheck("CSV data creation")
+                http_body = log_database.get_csv(
+                        device_pattern,
+                        section_decimation_definitions=graph_decimations)
+                del pc
+                http_content_type = "application/csv"
+
+            # If path starts with /ui/: Provide the content of the related file
+            elif self.path.startswith("/ui/") and ".." not in self.path:
+                try:
+                    file_name, file_extension = os.path.splitext(self.path)
+                    if file_extension not in self.CONTENT_TYPES:
+                        file_extension = ""
+                    http_content_type = self.CONTENT_TYPES[file_extension]
+
+                    f = open(os.path.dirname(os.path.abspath(__file__)) + os.sep +
+                             self.path)
+                    http_body = f.read()
+                    f.close()
+                except IOError:
+                    http_response = 404
+                    http_body = "<h1>404 - File not found</h1>"
+
+            # Debug support - allow executing commands
+            elif self.path.startswith("/eval") and "?" in self.path:
+                try:
+                    py_function = urllib.parse.unquote(self.path.split("?")[1])
+                    py_result = eval(py_function)
+                    http_body = "Result:<br>" + str(py_result)
+                except Exception as err:
+                    http_body = "Error:<br>" + str(err)
+
+            # Any other requests are invalid
             else:
-                device_pattern = ".*"
-
-            pc = PerformanceCheck("CSV data creation")
-            http_body = ldb.get_csv(
-                    device_pattern,
-                    section_decimation_definitions=config["graph_decimations"])
-            del pc
-            http_content_type = "application/csv"
-
-        # If path starts with /ui/: Provide the content of the related file
-        elif self.path.startswith("/ui/") and ".." not in self.path:
-            try:
-                file_name, file_extension = os.path.splitext(self.path)
-                if file_extension not in self.CONTENT_TYPES:
-                    file_extension = ""
-                http_content_type = self.CONTENT_TYPES[file_extension]
-
-                f = open(os.path.dirname(os.path.abspath(__file__)) + os.sep +
-                         self.path)
-                http_body = f.read()
-                f.close()
-            except IOError:
                 http_response = 404
-                http_body = "<h1>404 - File not found</h1>"
+                http_body = "<h1>404 - Not found</h1>" + \
+                            "<p>Allowed requests: /data, /ui/File</p>"
 
-        # Debug support - allow executing commands
-        elif self.path.startswith("/eval") and "?" in self.path:
-            try:
-                py_function = urllib.parse.unquote(self.path.split("?")[1])
-                py_result = eval(py_function)
-                http_body = "Result:<br>" + str(py_result)
-            except Exception as err:
-                http_body = "Error:<br>" + str(err)
+            # Form the full response
+            self.send_response(http_response)
+            self.send_header("Content-type", http_content_type)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(bytes(http_body, "utf8"))
 
-        # Any other requests are invalid
-        else:
-            http_response = 404
-            http_body = "<h1>404 - Not found</h1>" + \
-                        "<p>Allowed requests: /data, /ui/File</p>"
+        # Redefine the log_message method to suppress logging information.
+        def log_message(self, format, *args):
+            pass
 
-        # Form the full response
-        self.send_response(http_response)
-        self.send_header("Content-type", http_content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(bytes(http_body, "utf8"))
-
-    # Redefine the log_message method to suppress logging information.
-    def log_message(self, format, *args):
-        pass
+    return HttpRequestHandler
 
 
 #############################################
@@ -509,7 +517,7 @@ class MqttPublisher:
 # Main
 #############################################
 
-if __name__ == "__main__":
+def main():
 
     # Read and print the configuration
     try:
@@ -559,6 +567,10 @@ if __name__ == "__main__":
             })
     logging.config.dictConfig(logging_config)
 
+    # Sensor data dictionary: Contains the most recent data of _all_ sensors,
+    # including the timestamps (ts)
+    all_sensor_data_ts = {}
+
     # Data logging, optionally into a CSV file
     ldb = None
     if config.csv is not None:
@@ -584,11 +596,14 @@ if __name__ == "__main__":
     if config.port is not None:
         logger.info("Start HTTP/Web server on port %s", config.port)
         try:
+            HandlerClass = ContextSpecificHttpRequestHandler(
+                    all_sensor_data_ts, ldb, config["graph_decimations"])
             server = ThreadedHTTPServer(
-                    ("", int(config.port)), HttpRequestHandler)
+                    ("", int(config.port)), HandlerClass)
             logger.info("  Done")
         except:
             logger.critical("  Unable to open HTTP port %s!", config.port)
+            logger.exception("  Stack trace:")
             sys.exit(1)
 
     # Configure the mail alert
@@ -631,10 +646,6 @@ if __name__ == "__main__":
             wp_device = waveplus_emulation.WavePlus(sn, config.name[sn])
         wp_devices.append(wp_device)
     logger.info("  Done")
-
-    # Sensor data dictionary: Contains the most recent data of _all_ sensors,
-    # including the timestamps (ts)
-    all_sensor_data_ts = {}
 
     # Main loop
     logger.info("Start main loop. Press ctrl+C to exit program!")
@@ -709,3 +720,7 @@ if __name__ == "__main__":
     for wp_device in wp_devices:
         del wp_device
     logger.warning("WavePlus_bridge ended")
+
+
+if __name__ == "__main__":
+    main()
