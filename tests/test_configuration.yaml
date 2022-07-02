@@ -186,9 +186,7 @@ alerts:
             -   print:
                     # Print message, see above
                     message: |-
-                        Radon level is too high!
-                        Sensor: %d, %s
-                        Level: %v
+                        Radon level is too high! Sensor: %d, %s; Level: %v
 
 
 ######## MQTT Publishing ########
