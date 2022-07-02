@@ -44,8 +44,8 @@ class ThreadedHTTPServer(HTTPServer):
         thread.daemon = True
         thread.start()
 
-    def __new_request(self, handlerClass, request, address, server):
-        handlerClass(request, address, server)
+    def __new_request(self, HandlerClass, request, address, server):
+        HandlerClass(request, address, server)
         self.shutdown_request(request)
 
 
