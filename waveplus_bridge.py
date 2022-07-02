@@ -17,7 +17,7 @@
 # See the file "README.md" for details about installing, configuring and
 # running this program.
 ##########################################################################
-# Copyright (C) 2020 Andreas Drollinger
+# Copyright (C) 2020-2022 Andreas Drollinger
 # See the file "LICENSE" for information on usage and redistribution of this
 # file, and for a DISCLAIMER OF ALL WARRANTIES.
 ##########################################################################
