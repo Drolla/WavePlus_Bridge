@@ -153,12 +153,12 @@ class WavePlus():
                 logger.debug("  -> %s", sensor_data)
                 return sensor_data
             except Exception as err:
-                logger.error("Failed to communicate with device "
+                logger.error("Failed to communicate with 'device' "
                              "%s (attempt %s of %s): %s",
                              self.name, attempt, retries + 1, err)
                 # logger.exception("  Stack trace:")
             if attempt < retries:
-                logger.error("Retrying in %s seconds", retry_delay)
+                logger.debug("Retrying in %s seconds", retry_delay)
                 time.sleep(retry_delay)
 
         raise Exception("Failed to communicate with device {}/{}".format(
