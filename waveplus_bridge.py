@@ -277,11 +277,10 @@ def ContextSpecificHttpRequestHandler(all_sensor_data_ts, log_database,
             else:
                 device_pattern = ".*"
 
-            pc = PerformanceCheck("CSV data creation")
-            http_body = log_database.get_csv(
-                    device_pattern,
-                    section_decimation_definitions=graph_decimations)
-            del pc
+            with PerformanceCheck("HTTP request, provide sensor data"):
+                http_body = log_database.get_csv(
+                        device_pattern,
+                        section_decimation_definitions=graph_decimations)
             return "application/csv", http_body
 
         def get_file_content(self):
@@ -596,13 +595,12 @@ def main():
         log_labels = ["humidity", "radon_st", "radon_lt",
                       "temperature", "pressure", "co2", "voc"]
         try:
-            pc = PerformanceCheck("CSV file loading")
-            ldb = logdb.LogDB(
-                    {config.name[sn]: log_labels for sn in config.sn},
-                    config.csv,
-                    number_retention_records=
-                            config.data_retention/config.period)
-            del pc
+            with PerformanceCheck("LogDB/CSV file loading"):
+                ldb = logdb.LogDB(
+                        {config.name[sn]: log_labels for sn in config.sn},
+                        config.csv,
+                        number_retention_records=
+                                config.data_retention/config.period)
             logger.info("  %d records read", ldb.get_nbr_active_records())
         except PermissionError:
             logger.error("  No permission to open file %s!", config.csv)

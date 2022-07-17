@@ -1,7 +1,7 @@
 """Performance Check
 
-This file implements a performance check class that allows measuring the
-execution time of code blocks.
+This file implements a performance check context manager that allows measuring
+the execution time of code blocks.
 
 Copyright (C) 2022 Andreas Drollinger
 See the file "LICENSE" for information on usage and redistribution of
@@ -14,23 +14,40 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class PerformanceCheck():
+class PerformanceCheck(object):
     """Tasks performance checking
 
-    This class provides the tool to check the performance of tasks. It sets a
-    time anchor when the object is created and it calculates and reports the
-    passed time when the object is deleted again.
+    Context manager to check the performance of tasks. It reports the
+    execution time of the code placed in the with block.
+
+    Args:
+        task_short_name: Text that will be used in the performance logs
+        log_level: Logging level, provided by the logging module.
+                   Default=logging.INFO
+
+    Example:
+        from libs.performancecheck import PerformanceCheck
+        
+        with PerformanceCheck("Test loop"):
+            value = 1.0
+            for i in range(1000000):
+                value = value*1.1
+                if value > 1000:
+                    value /= 1000
     """
 
-    def __init__(self, task_description, log_level=logging.INFO):
-        self.start_time = time.time()
-        self.task_description = task_description
+    def __init__(self, task_short_name, log_level=logging.INFO):
+        self.task_short_name = task_short_name
         self.log_level = log_level
 
-    def __del__(self):
+    def __enter__(self):
+        self.start_time = time.time()
+        pass
+
+    def __exit__(self, type, value, traceback):
         execution_time_ms = 1000*(time.time()-self.start_time)
-        logger.log(self.log_level, "Performance check, %s: %.3fms",
-                   self.task_description, execution_time_ms)
+        logger.log(self.log_level, "%s: %.3fms",
+                   self.task_short_name, execution_time_ms)
 
 
 #############################################
@@ -38,17 +55,16 @@ class PerformanceCheck():
 #############################################
 
 if __name__ == "__main__":
-    logger.setLevel(logging.WARNING)
-    
-    # Create a performance check instance
-    pc = PerformanceCheck("Test loop")
-    
-    # Do some stuff and check the execution time (=performance check)
-    value = 1.0
-    for i in range(1000000):
-        value = value*1.1
-        if value > 1000:
-            value /= 1000
-    
-    # Delete the performance checker. This will report the run time
-    del pc
+    logger.setLevel(logging.DEBUG)
+    log_handler = logging.StreamHandler()
+    log_handler.setLevel(logging.DEBUG)
+    logger.addHandler(log_handler)
+
+    # Do some stuff within the performance checker. This will report the
+    # execution time of the with block.
+    with PerformanceCheck("Test loop"):
+        value = 1.0
+        for i in range(1000000):
+            value = value*1.1
+            if value > 1000:
+                value /= 1000
