@@ -676,7 +676,7 @@ corresponding debug level of the '__main__' logger:
         level: DEBUG
 ```
 
-To log additional information like connection details:
+To log additional information of the waveplus module, like connection details:
 
 ```
       libs.waveplus:
