@@ -547,7 +547,7 @@ Connect to 2930031376
     Run scan
     Run scan
       Found device 2930089521
-	 ...
+    ...
     Run scan
       Found device None
       Found device 2930031376
@@ -659,8 +659,8 @@ log:
         level: WARNING
       # Configure additional loggers if required:
       # libs.waveplus:
-      #   level: DEBUG
-		# libs.logdb:
+      #   level: INFO
+      # libs.logdb:
       # libs.threadedsendmail:
       # libs.performancecheck:
 ```
@@ -676,8 +676,14 @@ corresponding debug level of the '__main__' logger:
         level: DEBUG
 ```
 
-Or, to log debug information of the waveplus module, uncomment the following
-lines:
+To log additional information like connection details:
+
+```
+      libs.waveplus:
+        level: INFO
+```
+
+Or to log even more detailed debug information, change the previous lines into:
 
 ```
       libs.waveplus:
