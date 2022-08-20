@@ -45,7 +45,7 @@ from libs.threadedsendmail import ThreadedSendMail
 from libs.performancecheck import PerformanceCheck
 try:
     import libs.waveplus as waveplus
-except:
+except Exception:
     pass
 if os.path.basename(os.getcwd()) == "tests":
     sys.path.append(".")
@@ -617,7 +617,7 @@ def main():
             server = ThreadedHTTPServer(
                     ("", int(config.port)), HandlerClass)
             logger.info("  Done")
-        except:
+        except Exception:
             logger.critical("  Unable to open HTTP port %s!", config.port)
             logger.exception("  Stack trace:")
             sys.exit(1)
