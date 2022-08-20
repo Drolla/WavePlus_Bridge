@@ -123,7 +123,7 @@ class WavePlus():
         if self.periph is not None:
             try:
                 self.periph.disconnect()
-            except Exception:
+            except:
                 pass
             self.periph = None
             self.val_char = None

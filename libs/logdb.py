@@ -158,7 +158,7 @@ class _LogDbCsv:
                 value = self._NAN
             else:
                 value = float(string)
-        except Exception:
+        except:
             if string.strip() == "" and self.log_delta:
                 value = self._REP
             else:
@@ -304,7 +304,7 @@ class _LogDbCsv:
 
         try:
             self.f.close()
-        except Exception:
+        except:
             pass
 
     def insert(self, data_set):
@@ -582,7 +582,7 @@ class LogDB:
         for index, key_pattern in enumerate(key_patterns):
             try:
                 key_patterns[index] = re.compile(key_pattern)
-            except Exception:
+            except:
                 raise Exception("Unable to handle regular expression '" +
                                 str(key_pattern) + "'")
 
