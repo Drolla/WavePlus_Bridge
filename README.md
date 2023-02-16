@@ -275,6 +275,8 @@ alerts:
                         Level: %v'
 ```
 
+In case mails are not successfully sent, consult section [Email/SMTP server configuration](#email/smtp-server-configuration).
+
 ### MQTT publishing
 
 The sensor data can be published to an MQTT server. To do so, the MQTT broker, the parameters to setup the connection to it, as well as the devices and sensors that should be exposed, have to be specified in the following way:
@@ -600,6 +602,84 @@ This should lead to a similar log as shown in the following lines:
 In case the Wave Plus Bridge does not work correctly at this stage, even more
 detailed information has be reported by following the instructions provided in
 section [Enable logging of additional debug information].
+
+## Email/SMTP server configuration
+
+This section provides some help in case emails are not sent correctly.
+
+First of all, the mail settings should be tested by running the
+'libs/threadedsendmail.py' module as script:
+
+```
+usage: python threadedsendmail.py [-h] [--port PORT] [--security SECURITY]
+                                  [--user USER] [--password PASSWORD]
+                                  [--subject SUBJECT] [--message MESSAGE]
+                                  [--debug_level DEBUG_LEVEL] --server SERVER
+                                  --to TO --from FROM
+
+ThreadedSendMail demo and test
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --port PORT           SMTP server port, default=587
+  --security SECURITY   SSL or TLS
+  --user USER           Login user name
+  --password PASSWORD   Login password
+  --subject SUBJECT     Message subject
+  --message MESSAGE     Message text
+  --debug_level DEBUG_LEVEL
+                        smtplib debug level. If > 0 threading is disabled.
+
+required named arguments:
+  --server SERVER       SMTP server address
+  --to TO               To email list, separated with ','
+  --from FROM           From address
+```
+
+So, refine the server and login credentials until an email is successfully
+sent:
+
+```
+python libs/threadedsendmail.py \
+        --server <SERVER> --port <PORT> --security <SECURITY> \
+        --user <USER> --password <PASSWORD> \
+        --from <FROM> --to <DESTINATION> \
+        --debug_level 10 \
+        --subject "Test" --message "This is a test"
+```
+
+And once this works, update the SMTP server and alert definitions in the YAML
+file with the used arguments:
+
+```
+smtp_server:
+    # Mail server address
+    server: <SERVER>
+    
+    # Mail server port, e.g. 25, 465, 587
+    port: <PORT>
+    
+    # Options: SSL, TLS, or no definition (default)
+    security: <SECURITY>
+
+    # Login user name
+    user: <USER>
+
+    # Login user password
+    password: <PASSWORD>
+
+alerts:
+    -   sources:
+            my_office:radon_st
+        trigger:
+            above: 150
+            for: "00:30:00"
+            min_interval: "01:00:00"
+        actions:
+            mail:
+                from: <FROM>
+                to: <DESTINATION>
+```
 
 ## Enable logging of additional debug information
 
