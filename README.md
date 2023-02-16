@@ -35,6 +35,7 @@ The tool runs with Python 3.x. It can be installed as a service that is launched
     * [Some simple checks](#some-simple-checks)
     * [Run the Wave Plus communication test application](#run-the-wave-plus-communication-test-application)
     * [Run the Wave Plus Bridge using a minimalist configuration](#run-the-wave-plus-bridge-using-a-minimalist-configuration)
+    * [Email/SMTP server configuration](#email/smtp-server-configuration)
     * [Enable logging of additional debug information](#enable-logging-of-additional-debug-information)
 * [Related topics](#related-topics)
 
