@@ -35,7 +35,7 @@ The tool runs with Python 3.x. It can be installed as a service that is launched
     * [Some simple checks](#some-simple-checks)
     * [Run the Wave Plus communication test application](#run-the-wave-plus-communication-test-application)
     * [Run the Wave Plus Bridge using a minimalist configuration](#run-the-wave-plus-bridge-using-a-minimalist-configuration)
-    * [Email/SMTP server configuration](#email/smtp-server-configuration)
+    * [Email and SMTP server configuration](#email-and-smtp-server-configuration)
     * [Enable logging of additional debug information](#enable-logging-of-additional-debug-information)
 * [Related topics](#related-topics)
 
@@ -603,7 +603,7 @@ In case the Wave Plus Bridge does not work correctly at this stage, even more
 detailed information has be reported by following the instructions provided in
 section [Enable logging of additional debug information].
 
-## Email/SMTP server configuration
+## Email and SMTP server configuration
 
 This section provides some help in case emails are not sent correctly.
 
