@@ -629,7 +629,7 @@ class LogDB:
             return int(ref_index + position*(index_range[1]-index_range[0]))
         else:
             raise Exception("get_abs_index: type of position is " +
-                            type(get_abs_index))
+                            type(position))
 
     def get_index_range(self, start=0.0, end=1.0):
         """Get the index range
