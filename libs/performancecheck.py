@@ -27,7 +27,7 @@ class PerformanceCheck(object):
 
     Example:
         from libs.performancecheck import PerformanceCheck
-        
+
         with PerformanceCheck("Test loop"):
             value = 1.0
             for i in range(1000000):
