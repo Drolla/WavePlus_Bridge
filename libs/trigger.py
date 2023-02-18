@@ -119,11 +119,11 @@ class Trigger:
             return datetime.timedelta(
                     hours=t.hour, minutes=t.minute,
                     seconds=t.second).total_seconds()
-        except:
+        except Exception:
             pass
         try:
             return float(time_span_str)
-        except:
+        except Exception:
             raise Exception("Wrong time span format: {}".format(time_span_str))
 
     def _log_and_check_trigger(self, value):
