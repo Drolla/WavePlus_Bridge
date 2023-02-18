@@ -30,7 +30,7 @@ Required named arguments:
   --from FROM           From address
 
 Example:
-    python ..\libs\threadedsendmail.py \
+    python ../libs/threadedsendmail.py \
         --server mail.server.com --port 465 --security SSL \
         --user wave@plus.com --password bridge123 \
         --from wave.plus@myhome.com --to olivia.brown@family.com \
