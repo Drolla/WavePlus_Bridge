@@ -184,7 +184,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
             description="ThreadedSendMail demo and test")
 
-    required_args = parser.add_argument_group('required named arguments')
     parser.add_argument(
             "--port", type=int, help="SMTP server port, default=587",
             default=587)
@@ -202,6 +201,7 @@ if __name__ == "__main__":
             "--debug_level", type=int, default=0,
             help="smtplib debug level. If > 0 threading is disabled.")
 
+    required_args = parser.add_argument_group('required named arguments')
     required_args.add_argument(
             "--server", type=str, help="SMTP server address", required=True)
     required_args.add_argument(
