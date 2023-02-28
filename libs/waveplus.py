@@ -55,8 +55,19 @@ class WavePlus():
         self.name = name if name != "" else str(sn)
         self.uuid = UUID("b42e2a68-ade7-11e4-89d3-123b93f75cba")
 
+    def stop(self):
+        """Stops the BLE connection to the device
+
+        Call preferably this function to stop the connection instead of
+        deleting the object instance to ensure a controlled disconnection.
+        """
+        try:
+            self.disconnect()
+        except Exception:
+            pass
+
     def __del__(self):
-        self.disconnect()
+        self.stop()
 
     def connect(self):
         """Establish a BLE connection to the device

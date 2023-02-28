@@ -299,13 +299,16 @@ class _LogDbCsv:
                      len(data_matrix[0]))
         return data
 
-    def __del__(self):
-        """ Closes the open CSV file"""
+    def close(self):
+        """ Closes the open CSV file explicitely"""
 
         try:
             self.f.close()
         except Exception:
             pass
+
+    def __del__(self):
+        self.close()
 
     def insert(self, data_set):
         """Inserts a new data set.
@@ -444,11 +447,16 @@ class LogDB:
         self.number_retention_records = number_retention_records
         self.retention_time = retention_time
 
-    def __del__(self):
-        """Closes the CSV file"""
+    def close(self):
+        """ Closes the open CSV file explicitely"""
 
-        if self.logdbcsv is not None:
-            del self.logdbcsv
+        try:
+            self.logdbcsv.close()
+        except Exception:
+            pass
+
+    def __del__(self):
+        self.close()
 
     def insert(self, log_data, tstamp=None):
         """Inserts a new data set.
