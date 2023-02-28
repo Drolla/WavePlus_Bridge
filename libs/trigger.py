@@ -82,7 +82,7 @@ class Trigger:
             if type == "list" and not isinstance(value, list):
                 value = [value]
             elif value != default and type == "time_span":
-                value = self.parse_time_span(value)
+                value = self._parse_time_span(value)
             return value
 
         # Get all configuration key values and perform parameter checks
@@ -105,7 +105,7 @@ class Trigger:
         self.last_alert_trigger = None
 
     @staticmethod
-    def parse_time_span(time_span_str):
+    def _parse_time_span(time_span_str):
         """Parse a time span string
 
         The method returns the parsed time span in seconds as float value.
