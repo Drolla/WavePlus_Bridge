@@ -25,11 +25,11 @@ class ThreadedHTTPServer(HTTPServer):
 
     def __init__(self, *args):
         HTTPServer.__init__(self, *args)
-        thread = Thread(target=self.serve_forever_on_other_thread)
+        thread = Thread(target=self._serve_forever_on_other_thread)
         thread.daemon = True
         thread.start()
 
-    def serve_forever_on_other_thread(self):
+    def _serve_forever_on_other_thread(self):
         try:
             self.serve_forever()
         except KeyboardInterrupt:
@@ -39,12 +39,12 @@ class ThreadedHTTPServer(HTTPServer):
 
     def process_request(self, request, client_address):
         thread = Thread(
-                target=self.__new_request,
+                target=self._new_request,
                 args=(self.RequestHandlerClass, request, client_address, self))
         thread.daemon = True
         thread.start()
 
-    def __new_request(self, HandlerClass, request, address, server):
+    def _new_request(self, HandlerClass, request, address, server):
         HandlerClass(request, address, server)
         self.shutdown_request(request)
 
