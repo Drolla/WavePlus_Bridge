@@ -49,6 +49,9 @@ class WavePlus():
         self.sn = sn
         self.name = name if name != "" else sn
 
+    def stop(self):
+        pass
+
     def get(self):
         logger.debug("Reading sensor data for device %s", self.name)
         return {
