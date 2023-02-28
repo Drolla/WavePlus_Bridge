@@ -51,8 +51,7 @@ if os.path.basename(os.getcwd()) == "tests":
     sys.path.append(".")
     import waveplus_emulation as waveplus_emulation
 try:
-    import paho.mqtt.client as mqtt_client
-    import paho.mqtt.publish as mqtt_publish
+    from libs.threadedmqttpublisher import ThreadedMqttPublisher
 except Exception as err:
     print("MQTT service is not available:", err)
 assert sys.version_info >= (3, 0, 0), "Python 3.x required to run this program"
@@ -474,17 +473,44 @@ class MqttPublisher:
 
     def __init__(self, config):
         # Store the configuration options and complete them if necessary
-        self.cfg_host = config["host"]
-        self.cfg_port = config["port"]
-        self.cfg_topic = config["topic"].split("/") if "topic" in config \
-                                                    else []
-        self.cfg_client_id = config["client_id"] if "client_id" in config \
-                                                 else None
-        self.cfg_auth = config["auth"] if "auth" in config \
-                                       else None
-        self.cfg_tls = config["tls"] if "tls" in config \
-                                     else None
+        self.cfg_topic = config["topic"] if "topic" in config else ""
         self.cfg_publish = config["publish"]
+        self.status_topic = "/".join(filter(bool, [self.cfg_topic, "status"]))
+        will = {"topic": self.status_topic, "payload": "Connection lost"}
+
+        self.mqtt_publisher = ThreadedMqttPublisher(
+            hostname=config["host"],
+            port=config["port"],
+            client_id=config["client_id"] if "client_id" in config else None,
+            auth=config["auth"] if "auth" in config else None,
+            tls=config["tls"] if "tls" in config else None,
+            will=config["will"] if "will" in config else will
+        )
+
+    def stop(self):
+        """Stops the network thread and the connection
+
+        Call preferably this function to stop the connection instead of
+        deleting the object instance to ensure a controlled disconnection.
+        Note that the network cannot be restarted.
+        """
+
+        # Ignore this command if the mqttc object is already deleted (=None)
+        if self.mqtt_publisher is None:
+            return
+
+        # Set the master status to 'Offline'
+        publish_result = self.mqtt_publisher.publish_single(
+            topic=self.status_topic, payload="Offline", qos=2, retain=True)
+        publish_result.wait_for_publish(timeout=1)
+
+        # Stop and delete the MQTT publisher
+        self.mqtt_publisher.stop()
+        del self.mqtt_publisher
+        self.mqtt_publisher = None
+
+    def __del__(self):
+        self.stop()
 
     def publish(self, data):
         """Publish updated sensor levels
@@ -498,7 +524,7 @@ class MqttPublisher:
         """
 
         # Generation of the list of MQTT messages
-        mqtt_msgs = []
+        mqtt_messages = [{"topic": "status", "payload": "Online"}]
         for device in data:
             # Check if a device has to be published
             if device in self.cfg_publish:
@@ -515,19 +541,14 @@ class MqttPublisher:
                     continue
 
                 # Extend the existing message with the current sensor data
-                mqtt_msgs.append({
-                    "topic": "/".join(self.cfg_topic + [device, sensor]),
-                    "payload": data[device][sensor]})
+                mqtt_messages.append({
+                    "topic": "/".join([device, sensor]),
+                    "payload": data[device][sensor]
+                })
 
         # Publish the sensor data to the MQTT broker
-        # print("  ->", mqtt_msgs)
-        if mqtt_msgs:
-            mqtt_publish.multiple(
-                mqtt_msgs,
-                hostname=self.cfg_host, port=self.cfg_port,
-                client_id=self.cfg_client_id, keepalive=60, will=None,
-                auth=self.cfg_auth, tls=self.cfg_tls,
-                protocol=mqtt_client.MQTTv311, transport="tcp")
+        self.mqtt_publisher.publish_multiple(
+                mqtt_messages, topic_root=self.cfg_topic)
 
 
 #############################################
@@ -583,6 +604,10 @@ def main():
                     'stream': 'ext://sys.stdout'}}
             })
     logging.config.dictConfig(logging_config)
+
+    logger.debug("Available logger:")
+    for logger_name in logging.root.manager.loggerDict:
+        logger.debug("   %s", logging.getLogger(logger_name))
 
     # Sensor data dictionary: Contains the most recent data of _all_ sensors,
     # including the timestamps (ts)
@@ -640,10 +665,11 @@ def main():
 
     # Setup MQTT publishing
     mqtt_publisher = None
-    if "mqtt" in config and "paho.mqtt.publish" in sys.modules:
+    if "mqtt" in config and "paho.mqtt.client" in sys.modules:
         logger.info("Setup MQTT publishing")
         try:
             mqtt_publisher = MqttPublisher(config.mqtt)
+            time.sleep(1)
             logger.info("  Done")
 
         except Exception as err:
@@ -658,8 +684,8 @@ def main():
         if not config.emulation:
             wp_device = waveplus.WavePlus(sn, config.name[sn])
         else:
-            logger.warning("Use WavePlus emulation module")
             wp_device = waveplus_emulation.WavePlus(sn, config.name[sn])
+            logger.warning("Use WavePlus emulation module")
         wp_devices.append(wp_device)
     logger.info("  Done")
 
@@ -727,14 +753,20 @@ def main():
             elif len(ldb.data["Time"]) > nbr_pre_emulated:
                 time.sleep(max(0, iteration_start_time - time.time()))
         except KeyboardInterrupt:
+            logger.warning("Keyboard interrupt detected (Ctrl-C)")
             break
         except Exception as err:
             logger.error("Error: *s", err)
             pass
 
-    # Close connections and open files
+    # Close connections and files
     for wp_device in wp_devices:
-        del wp_device
+        wp_device.stop()
+    if mqtt_publisher is not None:
+        mqtt_publisher.stop()
+    if ldb is not None:
+        ldb.close()
+
     logger.warning("WavePlus_bridge ended")
 
 
