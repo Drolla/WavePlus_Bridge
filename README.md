@@ -36,6 +36,7 @@ The tool runs with Python 3.x. It can be installed as a service that is launched
     * [Run the Wave Plus communication test application](#run-the-wave-plus-communication-test-application)
     * [Run the Wave Plus Bridge using a minimalist configuration](#run-the-wave-plus-bridge-using-a-minimalist-configuration)
     * [Email and SMTP server configuration](#email-and-smtp-server-configuration)
+    * [MQTT configuration](#mqtt-configuration)
     * [Enable logging of additional debug information](#enable-logging-of-additional-debug-information)
 * [Related topics](#related-topics)
 
@@ -680,6 +681,67 @@ alerts:
                 from: <FROM>
                 to: <DESTINATION>
 ```
+
+## MQTT configuration
+
+This section provides instructions how the MQTT server and device configuration can be debugged in case the expected messages are not successfully transferred to a subscriber.
+
+First of all, it is recommended to run a generic MQTT client that allows exploring the message queues. Such tools are free available on the net (search for 'MQTT explorer').
+
+The MQTT server/broker settings can then be checked by executing the demo application provided by the 'threadedmqttpublisher.py' module. The usage can be obtained by running it with the '-h' option:
+
+```
+python threadedmqttpublisher.py -h
+
+usage: threadedmqttpublisher.py [-h] \
+            --host HOST --topic_root TOPIC_ROOT 
+            [--port PORT] [--client_id CLIENT_ID] [--auth AUTH] [--tls TLS] \
+            [--will WILL] \
+            [--debug_level DEBUG_LEVEL] \
+            message_dicts [message_dicts ...]
+
+positional arguments:
+  message_dicts         Message dict: {<topic1>: <msg1>,..,<topic2>: <msg2>}
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --port PORT           MQTT broker host port, default=1883
+  --client_id CLIENT_ID
+                        Client ID
+  --auth AUTH           Dict containing authentication parameters:
+                        {username: <username>, password: <password>}
+  --tls TLS             Dict containing client TLS configuration parameters:
+                        {ca_certs: <ca_certs>, certfile: <certfile>,
+                        keyfile: <keyfile>, tls_version: <tls_version>,
+                        ciphers: <ciphers>, insecure: <bool>}
+  --will WILL           Dict containing will parameters for the client:
+                        {topic: <topic>, payload: <payload>, qos: <qos>,
+                        retain=True
+  --debug_level DEBUG_LEVEL
+                        debug level. 0=no debug info,
+                        3=max level of debug info
+
+required named arguments:
+  --host HOST           MQTT broker host address
+  --topic_root TOPIC_ROOT
+                        MQTT topic root
+
+Remark:
+    Dicts have to be provided in YAML format (auth, tls, will).
+
+Example:
+    python threadedmqttpublisher.py \
+        --host test.mosquitto.org --port 1883 \
+        --topic my_nice_home/waveplus_bridge \
+        --will "{topic: my_nice_home/waveplus_bridge/status, \
+                 payload: Offline}"
+        "{status: Online}" \
+        "{humidity: 61.5, radon_st: 35, temperature: 18.5}" \
+        "{humidity: 66.5, radon_st: 38, temperature: 23.5}"
+```
+
+Once the  MQTT client receives messages, the settings can be ported into the YAML configuration file.
+
 
 ## Enable logging of additional debug information
 

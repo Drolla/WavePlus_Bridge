@@ -200,20 +200,29 @@ class ThreadedMqttPublisher:
 if __name__ == "__main__":
     import argparse
     import yaml
+    import textwrap
+
+    class DescriptionHelpFormatter(argparse.RawDescriptionHelpFormatter):
+        def _fill_text(self, text, width, indent):
+            return textwrap.dedent(text)
 
     # Define and parse the arguments
     parser = argparse.ArgumentParser(
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-            description="ThreadedMqttPublisher demo and test",
-            epilog="""Example:
-                python threadedmqttpublisher.py \\
-                    --host test.mosquitto.org --port 1883 \\
-                    --topic fusion18/waveplus_bridge \\
-                    --will "{topic: fusion18/waveplus_bridge/status, \\
-                             payload: Offline}"
-                    "{status: Online}" \\
-                    "{humidity: 61.5, radon_st: 35, temperature: 18.5}" \\
-                    "{humidity: 66.5, radon_st: 38, temperature: 23.5}"
+            formatter_class=DescriptionHelpFormatter,
+            description="ThreadedMqttPublisher demo and test application",
+            epilog="""
+                Remark:
+                    Dicts have to be provided in YAML format (auth, tls, will).
+
+                Example:
+                    python threadedmqttpublisher.py \\
+                        --host test.mosquitto.org --port 1883 \\
+                        --topic my_nice_home/waveplus_bridge \\
+                        --will "{topic: my_nice_home/waveplus_bridge/status, \\
+                                 payload: Offline}"
+                        "{status: Online}" \\
+                        "{humidity: 61.5, radon_st: 35, temperature: 18.5}" \\
+                        "{humidity: 66.5, radon_st: 38, temperature: 23.5}"
             """
     )
 
@@ -236,7 +245,7 @@ if __name__ == "__main__":
             "--will", type=str, default=None,
             help="Dict containing will parameters for the client: "
                  "{topic: <topic>, payload: <payload>, qos: <qos>, "
-                 "red=True")
+                 "retain=True")
     parser.add_argument(
             "--debug_level", type=int, default=1,
             help="debug level. 0=no debug info, 3=max level of debug info")
