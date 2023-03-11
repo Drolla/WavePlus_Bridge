@@ -524,7 +524,7 @@ class MqttPublisher:
         """
 
         # Generation of the list of MQTT messages
-        mqtt_messages = [{"topic": "status", "payload": "Online"}]
+        mqtt_messages = []
         for device in data:
             # Check if a device has to be published
             if device in self.cfg_publish:
@@ -545,6 +545,9 @@ class MqttPublisher:
                     "topic": "/".join([device, sensor]),
                     "payload": data[device][sensor]
                 })
+        mqtt_messages.append({"topic": "status", "payload": "Online"})
+        mqtt_messages.append({"topic": "publish_time",
+                              "payload": int(time.time())})
 
         # Publish the sensor data to the MQTT broker
         self.mqtt_publisher.publish_multiple(
