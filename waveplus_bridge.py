@@ -476,7 +476,8 @@ class MqttPublisher:
         self.cfg_topic = config["topic"] if "topic" in config else ""
         self.cfg_publish = config["publish"]
         self.status_topic = "/".join(filter(bool, [self.cfg_topic, "status"]))
-        will = {"topic": self.status_topic, "payload": "Connection lost"}
+        will = {"topic": self.status_topic, "payload": "Connection lost",
+                "retain": True}
 
         self.mqtt_publisher = ThreadedMqttPublisher(
             hostname=config["host"],
