@@ -544,11 +544,13 @@ class MqttPublisher:
                 # Extend the existing message with the current sensor data
                 mqtt_messages.append({
                     "topic": "/".join([device, sensor]),
-                    "payload": data[device][sensor]
+                    "payload": data[device][sensor],
+                    "retain": True
                 })
         mqtt_messages.append({"topic": "status", "payload": "Online"})
         mqtt_messages.append({"topic": "publish_time",
-                              "payload": int(time.time())})
+                              "payload": int(time.time()),
+                              "retain": True})
 
         # Publish the sensor data to the MQTT broker
         self.mqtt_publisher.publish_multiple(
