@@ -503,7 +503,7 @@ class MqttPublisher:
         # Set the master status to 'Offline'
         publish_result = self.mqtt_publisher.publish_single(
             topic=self.status_topic, payload="Offline", qos=2, retain=True)
-        publish_result.wait_for_publish(timeout=1)
+        publish_result.wait_for_publish()
 
         # Stop and delete the MQTT publisher
         self.mqtt_publisher.stop()
