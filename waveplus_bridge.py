@@ -29,6 +29,7 @@ import sys
 import time
 import os
 import os.path
+import signal
 import re
 import logging
 import logging.config
@@ -563,6 +564,13 @@ class MqttPublisher:
 
 def main():
 
+    # Define and register signal handlers
+    def handle_exit(sig, frame):
+        raise SystemExit()
+
+    signal.signal(signal.SIGINT, handle_exit)
+    signal.signal(signal.SIGTERM, handle_exit)
+
     # Read and print the configuration
     try:
         config = ReadConfiguration()
@@ -758,8 +766,8 @@ def main():
                 time.sleep(max(0, iteration_start_time - time.time()))
             elif len(ldb.data["Time"]) > nbr_pre_emulated:
                 time.sleep(max(0, iteration_start_time - time.time()))
-        except KeyboardInterrupt:
-            logger.warning("Keyboard interrupt detected (Ctrl-C)")
+        except (KeyboardInterrupt, SystemExit):
+            logger.warning("Interrupt/termination request detected")
             break
         except Exception as err:
             logger.error("Error: *s", err)
