@@ -156,7 +156,7 @@ class WavePlus():
 
         logger.debug("Reading sensor data for device %s", self.name)
 
-        for attempt in range(retries + 1):
+        for attempt in range(1, retries + 2):
             try:
                 self.connect()
                 sensor_data = self.read().get()
