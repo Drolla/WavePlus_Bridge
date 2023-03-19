@@ -489,6 +489,11 @@ class MqttPublisher:
             will=config["will"] if "will" in config else will
         )
 
+        # Wait until the thread is created, and set the status to 'Online'
+        time.sleep(1)
+        publish_result = self.mqtt_publisher.publish_single(
+            topic=self.status_topic, payload="Online", qos=2, retain=True)
+
     def stop(self):
         """Stops the network thread and the connection
 
@@ -536,6 +541,14 @@ class MqttPublisher:
             else:
                 continue
 
+            # Define the status topic based on the sensor data availability
+            mqtt_messages.append({
+                "topic": "/".join([device, "status"]),
+                "payload": "Online" if data[device] else "Offline",
+                "retain": True
+            })
+
+            # Add the sensor data
             for sensor in data[device]:
                 # Check if a sensor of a device has to be published
                 if sensor not in sensor_filter and \
@@ -548,7 +561,6 @@ class MqttPublisher:
                     "payload": data[device][sensor],
                     "retain": True
                 })
-        mqtt_messages.append({"topic": "status", "payload": "Online"})
         mqtt_messages.append({"topic": "publish_time",
                               "payload": int(time.time()),
                               "retain": True})
@@ -683,7 +695,6 @@ def main():
         logger.info("Setup MQTT publishing")
         try:
             mqtt_publisher = MqttPublisher(config.mqtt)
-            time.sleep(1)
             logger.info("  Done")
 
         except Exception as err:
@@ -722,19 +733,20 @@ def main():
             for wp_device in wp_devices:
                 logger.debug(
                         "Reading sensor data for device %s", wp_device.name)
+                sdata_ts = sdata_no_ts = {}
                 try:
                     # Read the senor values
-                    sdata = wp_device.get()
-
-                    # Store the sensor values
-                    sensor_data_no_ts[wp_device.name] = sdata.copy()
-                    sdata["update_time"] = int(time.time())
-                    sensor_data_ts[wp_device.name] = sdata
-                    all_sensor_data_ts[wp_device.name] = sdata
-                    logger.debug("  -> %s", sdata)
+                    sdata_no_ts = wp_device.get()
+                    logger.debug("  -> %s", sdata_no_ts)
+                    sdata_ts = sdata_no_ts.copy()
+                    sdata_ts["update_time"] = int(time.time())
                 except Exception as err:
                     logger.error("Failed to communicate with device %s: %s",
                                  wp_device.name, err)
+                # Store the sensor values
+                sensor_data_no_ts[wp_device.name] = sdata_no_ts
+                sensor_data_ts[wp_device.name] = sdata_ts
+                all_sensor_data_ts[wp_device.name] = sdata_ts
 
             # Store data in log database
             if ldb is not None:
