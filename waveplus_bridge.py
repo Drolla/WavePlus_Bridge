@@ -450,7 +450,7 @@ class Actions:
                 except Exception as err:
                     error_msg = "MailAlerts: Error accessing {}: {}".format(
                             ":".join(source), err)
-                    # logger.exception("  Stack trace:")
+                    logger.debug(error_msg, exc_info=1)
         if error_msg is not None:
             raise Exception(error_msg)
 
@@ -658,7 +658,7 @@ def main():
             logger.info("  Done")
         except Exception:
             logger.critical("  Unable to open HTTP port %s!", config.port)
-            logger.exception("  Stack trace:")
+            logger.debug("    Stack trace:", exc_info=1)
             sys.exit(1)
 
     # Configure the mail alert
@@ -674,7 +674,7 @@ def main():
 
         except Exception as err:
             logger.critical("  Unable to setup the alerts: %s", err)
-            logger.exception("  Stack trace:")
+            logger.debug("    Stack trace:", exc_info=1)
             sys.exit(1)
 
     # Setup MQTT publishing
@@ -688,7 +688,7 @@ def main():
 
         except Exception as err:
             logger.critical("  Unable to setup MQTT publishing: %s", err)
-            logger.exception("  Stack trace:")
+            logger.debug("    Stack trace:", exc_info=1)
             sys.exit(1)
 
     # Initialize the access to all Wave Plus devices
@@ -743,6 +743,7 @@ def main():
                                tstamp=int(iteration_start_time))
                 except Exception as err:
                     logger.error("Failed to log the data: %s", err)
+                    logger.debug("  Stack trace:", exc_info=1)
 
             # Check the sensor data level and trigger mail alerts
             if actions is not None:
@@ -750,7 +751,7 @@ def main():
                     actions.check_levels(sensor_data_no_ts)
                 except Exception as err:
                     logger.error("Failed to trigger alerts: %s", err)
-                    # logger.exception("  Stack trace:")
+                    logger.debug("  Stack trace:", exc_info=1)
 
             # Publish eventual sensor data updates to a MQTT broker
             if mqtt_publisher is not None:
@@ -758,7 +759,7 @@ def main():
                     mqtt_publisher.publish(sensor_data_ts)
                 except Exception as err:
                     logger.error("Failed to publish to MQTT broker: %s", err)
-                    # logger.exception("  Stack trace:")
+                    logger.debug("  Stack trace:", exc_info=1)
 
             # Wait until the next iteration has to start
             iteration_start_time += config.period
@@ -771,6 +772,7 @@ def main():
             break
         except Exception as err:
             logger.error("Error: *s", err)
+            logger.debug("  Stack trace:", exc_info=1)
             pass
 
     # Close connections and files
@@ -781,7 +783,7 @@ def main():
     if ldb is not None:
         ldb.close()
 
-    logger.warning("WavePlus_bridge ended")
+    logger.info("WavePlus_bridge ended")
 
 
 if __name__ == "__main__":
