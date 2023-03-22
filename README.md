@@ -804,6 +804,7 @@ log:
       # libs.waveplus:
       #   level: INFO
       # libs.logdb:
+      # libs.threadedmqttpublisher:
       # libs.threadedsendmail:
       # libs.performancecheck:
 ```

@@ -450,7 +450,7 @@ class Actions:
                 except Exception as err:
                     error_msg = "MailAlerts: Error accessing {}: {}".format(
                             ":".join(source), err)
-                    # logger.exception("  Stack trace:")
+                    logger.debug(error_msg, exc_info=1)
         if error_msg is not None:
             raise Exception(error_msg)
 
@@ -488,6 +488,11 @@ class MqttPublisher:
             tls=config["tls"] if "tls" in config else None,
             will=config["will"] if "will" in config else will
         )
+
+        # Wait until the thread is created, and set the status to 'Online'
+        time.sleep(1)
+        publish_result = self.mqtt_publisher.publish_single(
+            topic=self.status_topic, payload="Online", qos=2, retain=True)
 
     def stop(self):
         """Stops the network thread and the connection
@@ -536,6 +541,14 @@ class MqttPublisher:
             else:
                 continue
 
+            # Define the status topic based on the sensor data availability
+            mqtt_messages.append({
+                "topic": "/".join([device, "status"]),
+                "payload": "Online" if data[device] else "Offline",
+                "retain": True
+            })
+
+            # Add the sensor data
             for sensor in data[device]:
                 # Check if a sensor of a device has to be published
                 if sensor not in sensor_filter and \
@@ -548,7 +561,6 @@ class MqttPublisher:
                     "payload": data[device][sensor],
                     "retain": True
                 })
-        mqtt_messages.append({"topic": "status", "payload": "Online"})
         mqtt_messages.append({"topic": "publish_time",
                               "payload": int(time.time()),
                               "retain": True})
@@ -658,7 +670,7 @@ def main():
             logger.info("  Done")
         except Exception:
             logger.critical("  Unable to open HTTP port %s!", config.port)
-            logger.exception("  Stack trace:")
+            logger.debug("    Stack trace:", exc_info=1)
             sys.exit(1)
 
     # Configure the mail alert
@@ -674,7 +686,7 @@ def main():
 
         except Exception as err:
             logger.critical("  Unable to setup the alerts: %s", err)
-            logger.exception("  Stack trace:")
+            logger.debug("    Stack trace:", exc_info=1)
             sys.exit(1)
 
     # Setup MQTT publishing
@@ -683,12 +695,11 @@ def main():
         logger.info("Setup MQTT publishing")
         try:
             mqtt_publisher = MqttPublisher(config.mqtt)
-            time.sleep(1)
             logger.info("  Done")
 
         except Exception as err:
             logger.critical("  Unable to setup MQTT publishing: %s", err)
-            logger.exception("  Stack trace:")
+            logger.debug("    Stack trace:", exc_info=1)
             sys.exit(1)
 
     # Initialize the access to all Wave Plus devices
@@ -722,19 +733,20 @@ def main():
             for wp_device in wp_devices:
                 logger.debug(
                         "Reading sensor data for device %s", wp_device.name)
+                sdata_ts = sdata_no_ts = {}
                 try:
                     # Read the senor values
-                    sdata = wp_device.get()
-
-                    # Store the sensor values
-                    sensor_data_no_ts[wp_device.name] = sdata.copy()
-                    sdata["update_time"] = int(time.time())
-                    sensor_data_ts[wp_device.name] = sdata
-                    all_sensor_data_ts[wp_device.name] = sdata
-                    logger.debug("  -> %s", sdata)
+                    sdata_no_ts = wp_device.get()
+                    logger.debug("  -> %s", sdata_no_ts)
+                    sdata_ts = sdata_no_ts.copy()
+                    sdata_ts["update_time"] = int(time.time())
                 except Exception as err:
                     logger.error("Failed to communicate with device %s: %s",
                                  wp_device.name, err)
+                # Store the sensor values
+                sensor_data_no_ts[wp_device.name] = sdata_no_ts
+                sensor_data_ts[wp_device.name] = sdata_ts
+                all_sensor_data_ts[wp_device.name] = sdata_ts
 
             # Store data in log database
             if ldb is not None:
@@ -743,6 +755,7 @@ def main():
                                tstamp=int(iteration_start_time))
                 except Exception as err:
                     logger.error("Failed to log the data: %s", err)
+                    logger.debug("  Stack trace:", exc_info=1)
 
             # Check the sensor data level and trigger mail alerts
             if actions is not None:
@@ -750,7 +763,7 @@ def main():
                     actions.check_levels(sensor_data_no_ts)
                 except Exception as err:
                     logger.error("Failed to trigger alerts: %s", err)
-                    # logger.exception("  Stack trace:")
+                    logger.debug("  Stack trace:", exc_info=1)
 
             # Publish eventual sensor data updates to a MQTT broker
             if mqtt_publisher is not None:
@@ -758,7 +771,7 @@ def main():
                     mqtt_publisher.publish(sensor_data_ts)
                 except Exception as err:
                     logger.error("Failed to publish to MQTT broker: %s", err)
-                    # logger.exception("  Stack trace:")
+                    logger.debug("  Stack trace:", exc_info=1)
 
             # Wait until the next iteration has to start
             iteration_start_time += config.period
@@ -771,6 +784,7 @@ def main():
             break
         except Exception as err:
             logger.error("Error: *s", err)
+            logger.debug("  Stack trace:", exc_info=1)
             pass
 
     # Close connections and files
@@ -781,7 +795,7 @@ def main():
     if ldb is not None:
         ldb.close()
 
-    logger.warning("WavePlus_bridge ended")
+    logger.info("WavePlus_bridge ended")
 
 
 if __name__ == "__main__":
