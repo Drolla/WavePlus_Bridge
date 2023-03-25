@@ -398,7 +398,7 @@ class LogDB:
     Args:
         label_specs (see above): Label specifications
         file (str): CSV file
-        number_retention_records (bool): Number of data records to
+        number_retention_records (int): Number of data records to
             retain. Default: None (no constraint).
         retention_time (float): Time in seconds to retain the data.
             Default: None (no constraint).
