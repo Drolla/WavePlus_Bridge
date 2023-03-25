@@ -543,6 +543,8 @@ class LogDB:
                     tstamp - self.retention_time*1.1:
                 nbr_rec_to_delete += 1
         if nbr_rec_to_delete > 0:
+            logger.debug("  delete %s in-memory data sets",
+                         str(nbr_rec_to_delete))
             for label in self.labels:
                 self.data[label] = self.data[label][nbr_rec_to_delete:]
 
