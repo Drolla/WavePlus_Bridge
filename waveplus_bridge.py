@@ -651,7 +651,7 @@ def main():
                         {config.name[sn]: log_labels for sn in config.sn},
                         config.csv,
                         number_retention_records=
-                                config.data_retention/config.period)
+                                int(config.data_retention/config.period))
             logger.info("  %d records read", ldb.get_nbr_active_records())
         except PermissionError:
             logger.error("  No permission to open file %s!", config.csv)
