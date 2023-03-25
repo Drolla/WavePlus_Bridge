@@ -398,7 +398,7 @@ class LogDB:
     Args:
         label_specs (see above): Label specifications
         file (str): CSV file
-        number_retention_records (bool): Number of data records to
+        number_retention_records (int): Number of data records to
             retain. Default: None (no constraint).
         retention_time (float): Time in seconds to retain the data.
             Default: None (no constraint).
@@ -543,6 +543,8 @@ class LogDB:
                     tstamp - self.retention_time*1.1:
                 nbr_rec_to_delete += 1
         if nbr_rec_to_delete > 0:
+            logger.debug("  delete %s in-memory data sets",
+                         str(nbr_rec_to_delete))
             for label in self.labels:
                 self.data[label] = self.data[label][nbr_rec_to_delete:]
 
