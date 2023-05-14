@@ -443,14 +443,12 @@ class Actions:
         error_msg = None
         for sta in self.sources_trigger_actions_list:
             for source in sta[0]:
-                # print('  source:', source, file=log_file)
-                try:
-                    value = data[source[0]][source[1]]
-                    sta[1].log(value, source[0], source[1])
-                except Exception as err:
-                    error_msg = "MailAlerts: Error accessing {}: {}".format(
-                            ":".join(source), err)
-                    logger.debug(error_msg, exc_info=1)
+                if source[0] not in data or source[1] not in data[source[0]]:
+                    error_msg = "Data not available: " + \
+                                source[0] + "/" + source[1]
+                    continue
+                value = data[source[0]][source[1]]
+                sta[1].log(value, source[0], source[1])
         if error_msg is not None:
             raise Exception(error_msg)
 
