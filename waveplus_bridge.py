@@ -443,16 +443,14 @@ class Actions:
         error_msg = None
         for sta in self.sources_trigger_actions_list:
             for source in sta[0]:
-                # print('  source:', source, file=log_file)
-                try:
-                    value = data[source[0]][source[1]]
-                    sta[1].log(value, source[0], source[1])
-                except Exception as err:
-                    error_msg = "MailAlerts: Error accessing {}: {}".format(
-                            ":".join(source), err)
-                    logger.debug(error_msg, exc_info=1)
+                if source[0] not in data or source[1] not in data[source[0]]:
+                    error_msg = "Data " + source[0] + "/" + source[1] + \
+                                " not available"
+                    continue
+                value = data[source[0]][source[1]]
+                sta[1].log(value, source[0], source[1])
         if error_msg is not None:
-            raise Exception(error_msg)
+            raise UserWarning(error_msg)
 
 
 #############################################
@@ -761,6 +759,8 @@ def main():
             if actions is not None:
                 try:
                     actions.check_levels(sensor_data_no_ts)
+                except UserWarning as err:
+                    logger.warning("Failed to trigger alerts: %s", err)
                 except Exception as err:
                     logger.error("Failed to trigger alerts: %s", err)
                     logger.debug("  Stack trace:", exc_info=1)
