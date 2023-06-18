@@ -28,10 +28,11 @@ class Delegate(DefaultDelegate):
     def __init__(self, mac):
         DefaultDelegate.__init__(self)
         self._mac = mac
+        Delegate.data[self._mac] = b""
 
     def handleNotification(self, handle, data):
         logger.debug("Received notification (%s): %s", handle, data)
-        Delegate.data[self._mac] = data
+        Delegate.data[self._mac] += data
 
     def get(self):
         return Delegate.data[self._mac]
@@ -162,7 +163,7 @@ class WavePlus():
         return sensor_data
 
     def read_control_data(self):
-        """Read the control data (battery level and luminity)"""
+        """Read the control data (battery level and illuminance)"""
 
         FORMAT_TYPE='<L12B6H'
         CMD=struct.pack('<B', 0x6d)
@@ -174,7 +175,15 @@ class WavePlus():
         # Define the notificaiton handle and turn notification on
         delegate = Delegate(self._periph)
         self._periph.setDelegate(delegate)
+
+        logger.debug("Control characteristics: Handle=%s/%s",
+                     self._control_char.valHandle,
+                     self._control_char.getHandle())
+        logger.debug("CCCD value (indication disabled): %s",
+                     self._periph.readCharacteristic(self._control_char.valHandle+2))
         self._periph.writeCharacteristic(self._control_char.valHandle+2, b"\x02\x00")
+        logger.debug("CCCD value (indication enabled): %s",
+                     self._periph.readCharacteristic(self._control_char.valHandle+2))
 
         # Send command to the characteristic
         self._periph.writeCharacteristic(self._control_char.valHandle, b"\x6d")
@@ -184,7 +193,10 @@ class WavePlus():
         if not self._periph.waitForNotifications(10.0):
             logger.error("No notification received for device %s", self._sn)
             return {}
+        while self._periph.waitForNotifications(0.5):
+            pass
         raw_data = delegate.get()
+        logger.debug("Received data: %s", raw_data)
         self._periph.writeCharacteristic(self._control_char.valHandle+2, b"\x00\x00")
         
         # Process the received data
@@ -194,16 +206,21 @@ class WavePlus():
                            CMD.hex(), cmd.hex())
             return {}
         
-        if len(raw_data[2:]) != struct.calcsize(self.format_type):
+        if len(raw_data[2:]) != struct.calcsize(FORMAT_TYPE):
             logger.debug("Wrong length data received (%d), expected (%d)",
-                         len(cmd), struct.calcsize(self.format_type))
+                         len(raw_data[2:]), struct.calcsize(FORMAT_TYPE))
             return {}
         value_array = struct.unpack(FORMAT_TYPE, raw_data[2:])
-        control_data = {
-            "luminance": value_array[2],
-            "battery": value_array[17] / 1000.0,
-            # "measurement_periods": "value_array[5],
-        }
+
+        illuminance = value_array[2]
+
+        vbat = value_array[17] / 1000.0
+        VBAT_MAX = 3.2
+        VBAT_MIN = 2.2
+        vbat_pct = 100 * round(
+            max(1, min(0, vbat-VBAT_MIN)) / (VBAT_MAX - VBAT_MIN))
+
+        control_data = {"illuminance": illuminance, "battery": vbat_pct}
         return control_data
 
     def disconnect(self):
@@ -217,7 +234,7 @@ class WavePlus():
             self._control_char = None
 
     def get(self, retries=3, retry_delay=1.0):
-        """Return the sensor data as well as the battery level and luminity
+        """Return the sensor data as well as the battery level and illuminance
 
         This method connects to the device, reads the raw sensor data and
         translates it into a sensor data dictionary, and disconnect from the
@@ -260,7 +277,7 @@ class WavePlus():
 
     @staticmethod
     def get_control_keys():
-        return ("luminance", "battery") # "measurement_periods"
+        return ("illuminance", "battery") # "measurement_periods"
 
     @staticmethod
     def get_keys():
