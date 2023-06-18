@@ -11,9 +11,12 @@ See the file "LICENSE" for information on usage and redistribution of
 this file, and for a DISCLAIMER OF ALL WARRANTIES.
 """
 
+# pylint: disable=broad-except
+
 import time
 import struct
 import logging
+# pylint: disable-next=E0401
 from bluepy.btle import UUID, Peripheral, Scanner, DefaultDelegate
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,138 @@ class Delegate(DefaultDelegate):
 
     def get(self):
         return Delegate.data[self._mac]
+
+
+class WavePlusSensors():
+    DATA_FORMAT = "<BBBBHHHHHHHH"
+
+    def __init__(self, periph):
+        self._char = periph.getCharacteristics(uuid=_UUID_DATA)[0]
+
+    def get(self):
+        """Read the sensor data and return it as dictionary"""
+
+        raw_data = self._read_data()
+        try:
+            self._data_check(raw_data)
+        except ValueError as error:
+            logger.error(error)
+            return {}
+        value_array = struct.unpack(self.DATA_FORMAT, raw_data)
+        sensor_data = self._decode(value_array)
+        return sensor_data
+
+    def _data_check(self, raw_data):
+        sensor_version = raw_data[0]
+        if sensor_version != 1:
+            raise ValueError(f"Unknown sensor version {sensor_version}")
+
+    def _decode(self, value_array):
+        return {
+            "humidity": value_array[1]/2.0,
+            "radon_st": self._conv2radon(value_array[4]),
+            "radon_lt": self._conv2radon(value_array[5]),
+            "temperature": value_array[6]/100.0,
+            "pressure": value_array[7]/50.0,
+            "co2": value_array[8]*1.0,
+            "voc": value_array[9]*1.0
+        }
+
+    def _read_data(self):
+        return self._char.read()
+
+    @staticmethod
+    def get_keys():
+        return ("humidity", "radon_st", "radon_lt", "temperature", "pressure",
+                "co2", "voc")
+
+    @staticmethod
+    def _conv2radon(radon_raw):
+        """ Validate or invalidate the radon value."""
+        if 0 <= radon_raw <= 16383:
+            return radon_raw
+        return "N/A"
+
+
+class WavePlusControl():
+    DATA_FORMAT='<BBL12B6H'
+    CMD=struct.pack('<B', 0x6d)
+    VBAT_MAX = 3.2
+    VBAT_MIN = 2.2
+
+    def __init__(self, peripheral):
+        self._periph = peripheral
+        self._char = self._periph.getCharacteristics(uuid=_UUID_CONTROL)[0]
+
+    def get(self):
+        """Read the control data and return it as dictionary"""
+
+        raw_data = self._read_data()
+        try:
+            self._data_check(raw_data)
+        except ValueError as error:
+            logger.error(error)
+            return {}
+        value_array = struct.unpack(self.DATA_FORMAT, raw_data)
+        control_data = self._decode(value_array)
+        return control_data
+
+    def _data_check(self, raw_data):
+        cmd = raw_data[0:1]
+        if cmd != self.CMD:
+            raise ValueError(f"Got data for wrong command: Expected \
+                             {self.CMD.hex()}, got {cmd.hex()}")
+
+        req_length = struct.calcsize(self.DATA_FORMAT)
+        if len(raw_data) != req_length:
+            raise ValueError(f"Wrong length data: Expected {req_length}), \
+                              received {len(raw_data[2:])}")
+
+    def _decode(self, value_array):
+        illuminance = value_array[4]
+
+        vbat = value_array[19] / 1000.0
+        vbat_pct = 100 * round(
+            max(1, min(0, vbat-self.VBAT_MIN)) / (self.VBAT_MAX - self.VBAT_MIN))
+
+        control_data = {"illuminance": illuminance, "battery": vbat_pct}
+        return control_data
+
+    def _read_data(self):
+        """Read the control data (battery level and illuminance data)"""
+
+        # Define the notificaiton handle and turn notification on
+        delegate = Delegate(self._periph)
+        self._periph.setDelegate(delegate)
+
+        logger.debug("Control characteristics: Handle=%s/%s",
+                     self._char.valHandle,
+                     self._char.getHandle())
+        logger.debug("CCCD value (indication disabled): %s",
+                     self._periph.readCharacteristic(self._char.valHandle+2))
+        self._periph.writeCharacteristic(self._char.valHandle+2, b"\x02\x00")
+        logger.debug("CCCD value (indication enabled): %s",
+                     self._periph.readCharacteristic(self._char.valHandle+2))
+
+        # Send command to the characteristic
+        self._periph.writeCharacteristic(self._char.valHandle, self.CMD)
+
+        # Wait on notification, get the data, and disable notification
+        logger.debug("Waiting on notificaiton")
+        if not self._periph.waitForNotifications(10.0):
+            logger.error("No notification received ...")
+            return {}
+        while self._periph.waitForNotifications(0.5):
+            pass
+        raw_data = delegate.get()
+        logger.debug("Received data: %s", raw_data)
+        self._periph.writeCharacteristic(self._char.valHandle+2, b"\x00\x00")
+
+        return raw_data
+
+    @staticmethod
+    def get_keys():
+        return ("illuminance", "battery") # "measurement_periods"
 
 
 class WavePlus():
@@ -68,8 +203,8 @@ class WavePlus():
         # and the nick name. If no nickname is provided, it is defaulted to the
         # serial number.
         self._periph = None
-        self._data_char = None
-        self._control_char = None
+        self._sensor = None
+        self._control = None
         self._mac = None
         self._sn = str(sn)
         self._name = name if name != "" else str(sn)
@@ -88,6 +223,43 @@ class WavePlus():
     def __del__(self):
         self.stop()
 
+    def discover(self):
+        # Device is known, there is nothing to discover
+        if self._mac is not None:
+            return
+
+        # Check if device is already known (from scanning another device)
+        if self._sn in WavePlus._sn2addr:
+            logger.info("  Device %s previously found, MAC address=%s",
+                        self._sn, self._mac)
+            self._mac = WavePlus._sn2addr[self._sn]
+            return
+
+        # Scan for the device
+        logger.debug("Initialize scanning/discovery")
+        scanner = Scanner().withDelegate(DefaultDelegate())
+        search_count = 0
+        while search_count < 50:
+            logger.debug("  Run scan")
+            devices = scanner.scan(0.1)  # 0.1 seconds scan period
+            search_count += 1
+            for dev in devices:
+                manu_data = dev.getValueText(255)
+                print("  Manufacturing data:", manu_data)
+                sn = self._parse_serial_number(manu_data)
+                logger.debug("  Found device %s", sn)
+
+                # A serial number has been found. Register it
+                if sn is not None and sn not in WavePlus._sn2addr:
+                    WavePlus._sn2addr[sn] = dev.addr
+
+                # The device with the defined serial number has been found
+                if sn == self._sn:
+                    logger.info("  Device %s found, MAC address=%s",
+                                self._sn, self._mac)
+                    self._mac = dev.addr
+                    return
+
     def connect(self):
         """Establish a BLE connection to the device
 
@@ -99,129 +271,18 @@ class WavePlus():
 
         logger.debug("Connect to %s", self._sn)
 
-        # Check if device is already known (from scanning another device)
-        if self._mac is None and self._sn in WavePlus._sn2addr:
-            self._mac = WavePlus._sn2addr[self._sn]
-            logger.info("  Device %s previously found, MAC address=%s",
-                        self._sn, self._mac)
-
-        # Auto-discover device on first connection
+        # Ensure that the device (MAC) is known. Scan for the device otherwise
+        self.discover()
         if self._mac is None:
-            logger.debug("  MAC address unknown, initialize scanning")
-            scanner = Scanner().withDelegate(DefaultDelegate())
-            searchCount = 0
-            while self._mac is None and searchCount < 50:
-                logger.debug("    Run scan")
-                devices = scanner.scan(0.1)  # 0.1 seconds scan period
-                searchCount += 1
-                for dev in devices:
-                    ManuData = dev.getValueText(255)
-                    sn = self._parse_serial_number(ManuData)
-                    logger.debug("      Found device %s", sn)
-                    if sn is not None and sn not in WavePlus._sn2addr:
-                        WavePlus._sn2addr[sn] = dev.addr
-
-                    # Serial number has been found. Register the other devices
-                    if sn == self._sn:
-                        self._mac = dev.addr
-
-            if self._mac is None:
-                raise ConnectionError("Could not find device " + self._sn)
-
-            logger.info("  Device %s found, MAC address=%s",
-                        self._sn, self._mac)
+            raise ConnectionError("Could not find device " + self._sn)
 
         # Connect to device
         if self._periph is None:
             self._periph = Peripheral(self._mac)
-        if self._data_char is None:
-            self._data_char = self._periph.getCharacteristics(uuid=_UUID_DATA)[0]
-        if self._control_char is None:
-            self._control_char = self._periph.getCharacteristics(uuid=_UUID_CONTROL)[0]
-
-    def read_sensor_data(self):
-        """Read the raw sensor data"""
-
-        if (self._data_char is None):
-            logger.error("Device is not connected: %s", self._sn)
-            raise ConnectionError("Device is not connected" + self._sn)
-        raw_data = self._data_char.read()
-        value_array = struct.unpack("BBBBHHHHHHHH", raw_data)
-
-        sensor_version = value_array[0]
-        if (sensor_version != 1):
-            logger.error("Unknown sensor version (%s)", sensor_version)
-        sensor_data = {
-            "humidity": value_array[1]/2.0,
-            "radon_st": self._conv2radon(value_array[4]),
-            "radon_lt": self._conv2radon(value_array[5]),
-            "temperature": value_array[6]/100.0,
-            "pressure": value_array[7]/50.0,
-            "co2": value_array[8]*1.0,
-            "voc": value_array[9]*1.0
-        }
-        return sensor_data
-
-    def read_control_data(self):
-        """Read the control data (battery level and illuminance)"""
-
-        FORMAT_TYPE='<L12B6H'
-        CMD=struct.pack('<B', 0x6d)
-
-        if (self._control_char is None):
-            logger.error("Device is not connected: %s", self._sn)
-            raise ConnectionError("Device is not connected" + self._sn)
-        
-        # Define the notificaiton handle and turn notification on
-        delegate = Delegate(self._periph)
-        self._periph.setDelegate(delegate)
-
-        logger.debug("Control characteristics: Handle=%s/%s",
-                     self._control_char.valHandle,
-                     self._control_char.getHandle())
-        logger.debug("CCCD value (indication disabled): %s",
-                     self._periph.readCharacteristic(self._control_char.valHandle+2))
-        self._periph.writeCharacteristic(self._control_char.valHandle+2, b"\x02\x00")
-        logger.debug("CCCD value (indication enabled): %s",
-                     self._periph.readCharacteristic(self._control_char.valHandle+2))
-
-        # Send command to the characteristic
-        self._periph.writeCharacteristic(self._control_char.valHandle, b"\x6d")
-
-        # Wait on notification, get the data, and disable notification
-        logger.debug("Waiting on notificaiton for %s", self._sn)
-        if not self._periph.waitForNotifications(10.0):
-            logger.error("No notification received for device %s", self._sn)
-            return {}
-        while self._periph.waitForNotifications(0.5):
-            pass
-        raw_data = delegate.get()
-        logger.debug("Received data: %s", raw_data)
-        self._periph.writeCharacteristic(self._control_char.valHandle+2, b"\x00\x00")
-        
-        # Process the received data
-        cmd = raw_data[0:1]
-        if cmd != CMD:
-            logger.warning("Got data for wrong command: Expected %s, got %s",
-                           CMD.hex(), cmd.hex())
-            return {}
-        
-        if len(raw_data[2:]) != struct.calcsize(FORMAT_TYPE):
-            logger.debug("Wrong length data received (%d), expected (%d)",
-                         len(raw_data[2:]), struct.calcsize(FORMAT_TYPE))
-            return {}
-        value_array = struct.unpack(FORMAT_TYPE, raw_data[2:])
-
-        illuminance = value_array[2]
-
-        vbat = value_array[17] / 1000.0
-        VBAT_MAX = 3.2
-        VBAT_MIN = 2.2
-        vbat_pct = 100 * round(
-            max(1, min(0, vbat-VBAT_MIN)) / (VBAT_MAX - VBAT_MIN))
-
-        control_data = {"illuminance": illuminance, "battery": vbat_pct}
-        return control_data
+        if self._sensor is None:
+            self._sensor = WavePlusSensors(self._periph)
+        if self._control is None:
+            self._control = WavePlusControl(self._periph)
 
     def disconnect(self):
         if self._periph is not None:
@@ -230,8 +291,8 @@ class WavePlus():
             except Exception:
                 pass
             self._periph = None
-            self._data_char = None
-            self._control_char = None
+            self._sensor = None
+            self._control = None
 
     def get(self, retries=3, retry_delay=1.0):
         """Return the sensor data as well as the battery level and illuminance
@@ -253,56 +314,42 @@ class WavePlus():
         for attempt in range(1, retries + 2):
             try:
                 self.connect()
-                sensor_data = self.read_sensor_data()
-                control_data = self.read_control_data()
+                sensor_data = self._sensor.get()
+                control_data = self._control.get()
                 self.disconnect()
                 logger.debug("  -> %s", sensor_data)
                 return dict(**sensor_data, **control_data)
-            except Exception as err:
-                logger.warning("Failed to communicate with device "
-                               "%s (attempt %s of %s): %s",
-                               self._name, attempt, retries + 1, err)
+            except Exception as error:
+                logger.warning("Failed to communicate with device \
+                               %s (attempt %s of %s): %s",
+                               self._name, attempt, retries + 1, error)
                 logger.debug("  Stack trace:", exc_info=1)
             if attempt < retries:
                 logger.debug("Retrying in %s seconds", retry_delay)
                 time.sleep(retry_delay)
 
-        raise Exception("Failed to communicate with device {}/{}".format(
+        raise ConnectionError("Failed to communicate with device {}/{}".format(
                 self._sn, self._name))
 
     @staticmethod
-    def get_sensor_keys():
-        return ("humidity", "radon_st", "radon_lt", "temperature", "pressure",
-                "co2", "voc")
-
-    @staticmethod
-    def get_control_keys():
-        return ("illuminance", "battery") # "measurement_periods"
-
-    @staticmethod
     def get_keys():
-        return WavePlus.get_sensor_keys() + WavePlus.get_control_keys()
+        return WavePlusSensors.get_keys() + WavePlusControl.get_keys()
 
     @staticmethod
-    def _parse_serial_number(RawHexStr):
-        if RawHexStr is None:
+    def _parse_serial_number(hex_string):
+        if hex_string is None:
             sn = None
         else:
-            ManuData = bytearray.fromhex(RawHexStr)
-            if (((ManuData[1] << 8) | ManuData[0]) == 0x0334):
-                sn = ManuData[2] | (ManuData[3] << 8) \
-                   | (ManuData[4] << 16) | (ManuData[5] << 24)
-                sn = str(sn)
+            manu_data = struct.unpack("<HLBB", bytearray.fromhex(hex_string))
+            if manu_data[0] == 0x0334:
+                sn = str(manu_data[1])
             else:
                 sn = None
         return sn
-
-    @staticmethod
-    def _conv2radon(radon_raw):
-        """ Validate or invalidate the radon value."""
-        if 0 <= radon_raw <= 16383:
-            return radon_raw
-        return "N/A"
+    
+    @property
+    def name(self):
+        return self._name
 
 
 #############################################
@@ -312,7 +359,7 @@ class WavePlus():
 if __name__ == "__main__":
     import sys
 
-    def help():
+    def help_and_exit():
         print("Usage: waveplus.py <period> "
               "<serial_number_1> [serial_number_2] ..")
         sys.exit(1)
@@ -326,12 +373,12 @@ if __name__ == "__main__":
     # Handle the arguments (1: sensor read period, 2..: serial numbers)
     if len(sys.argv) < 3 or \
             sys.argv[1].isdigit() is not True or int(sys.argv[1]) < 0:
-        help()
+        help_and_exit()
     period = int(sys.argv[1])
     serial_numbers = []
     for serial_number in sys.argv[2:]:
         if serial_number.isdigit() is not True or len(serial_number) != 10:
-            help()
+            help_and_exit()
         serial_numbers.append(serial_number)
 
     # Setup the devices
@@ -355,14 +402,14 @@ if __name__ == "__main__":
             try:
                 wp_device_data = wp_device.get()
                 wp_device_values = ["" if key not in wp_device_data else wp_device_data[key] for key in keys]
-                logger.info(log_format.format(wp_device._name, *wp_device_values))
+                logger.info(log_format.format(wp_device.name, *wp_device_values))
             except KeyboardInterrupt:
                 break
             except Exception as err:
                 logger.error("Failed to communicate with device %s: %s",
-                             wp_device._name, err)
+                             wp_device.name, err)
                 logger.exception("  Stack trace:")
         time.sleep(period)
 
-    del wp_device
+    del wp_devices
     logger.warning("waveplus ended")
