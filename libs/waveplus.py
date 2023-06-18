@@ -21,51 +21,75 @@ from bluepy.btle import UUID, Peripheral, Scanner, DefaultDelegate
 
 logger = logging.getLogger(__name__)
 
-_UUID_DATA = UUID("b42e2a68-ade7-11e4-89d3-123b93f75cba")
-_UUID_CONTROL = UUID("b42e2d06-ade7-11e4-89d3-123b93f75cba")
 
+class _Delegate(DefaultDelegate):
+    """Bluetooth message receiver class
+    
+    The handleNotificaiton method will be called to receive notificaiton or
+    indication messages.
+    With the WavePlus device it has been observed that an indication message
+    is not received in one chunk, but that the handleNotification method is
+    called multiple times. For this reason that received messages are
+    concatenuated.
 
-class Delegate(DefaultDelegate):
+    Args:
+        mac: MAC address of the Airthing device
+    """
+
     data = {}
 
     def __init__(self, mac):
         DefaultDelegate.__init__(self)
         self._mac = mac
-        Delegate.data[self._mac] = b""
+
+        # Initialize the obtained message
+        _Delegate.data[self._mac] = b""
 
     def handleNotification(self, handle, data):
-        logger.debug("Received notification (%s): %s", handle, data)
-        Delegate.data[self._mac] += data
+        """Notificaiton handle that adds the message to the data buffer"""
+        logger.debug("  Received notification (%s): %s", handle, data)
+        _Delegate.data[self._mac] += data
 
     def get(self):
-        return Delegate.data[self._mac]
+        """Get the recieved message"""
+        return _Delegate.data[self._mac]
 
 
-class WavePlusSensors():
-    DATA_FORMAT = "<BBBBHHHHHHHH"
+class _WavePlusSensors():
+    """WavePlus sensor reading and parsing class
+    
+    Args:
+        peripheral: BluePy peripheral class instance
+    """
 
-    def __init__(self, periph):
-        self._char = periph.getCharacteristics(uuid=_UUID_DATA)[0]
+    _UUID = UUID("b42e2a68-ade7-11e4-89d3-123b93f75cba")
+    _FORMAT = "<BBBBHHHHHHHH"
+    _KEYS = ("humidity", "radon_st", "radon_lt", "temperature", "pressure",
+             "co2", "voc")
+
+    def __init__(self, peripheral):
+        self._char = peripheral.getCharacteristics(uuid=self._UUID)[0]
 
     def get(self):
         """Read the sensor data and return it as dictionary"""
-
         raw_data = self._read_data()
         try:
             self._data_check(raw_data)
         except ValueError as error:
             logger.error(error)
             return {}
-        value_array = struct.unpack(self.DATA_FORMAT, raw_data)
+        value_array = struct.unpack(self._FORMAT, raw_data)
         sensor_data = self._decode(value_array)
         return sensor_data
 
     def _data_check(self, raw_data):
+        """Check the received data and raise an error if it is not valid"""
         sensor_version = raw_data[0]
         if sensor_version != 1:
             raise ValueError(f"Unknown sensor version {sensor_version}")
 
     def _decode(self, value_array):
+        """Parse the obtained data and format it in a dictionary"""
         return {
             "humidity": value_array[1]/2.0,
             "radon_st": self._conv2radon(value_array[4]),
@@ -79,28 +103,37 @@ class WavePlusSensors():
     def _read_data(self):
         return self._char.read()
 
-    @staticmethod
-    def get_keys():
-        return ("humidity", "radon_st", "radon_lt", "temperature", "pressure",
-                "co2", "voc")
+    @classmethod
+    def get_keys(cls):
+        """Get the keys provided by this class"""
+        return cls._KEYS
 
     @staticmethod
     def _conv2radon(radon_raw):
         """ Validate or invalidate the radon value."""
+
         if 0 <= radon_raw <= 16383:
             return radon_raw
         return "N/A"
 
 
-class WavePlusControl():
-    DATA_FORMAT='<BBL12B6H'
-    CMD=struct.pack('<B', 0x6d)
-    VBAT_MAX = 3.2
-    VBAT_MIN = 2.2
+class _WavePlusControl():
+    """WavePlus control data reading and parsing class
+    
+    Args:
+        peripheral: BluePy peripheral class instance
+    """
+
+    _UUID = UUID("b42e2d06-ade7-11e4-89d3-123b93f75cba")
+    _FORMAT='<BBL12B6H'
+    _KEYS = ("illuminance", "battery") # Not implemented: measurement_periods
+    _CMD=struct.pack('<B', 0x6d)
+    _VBAT_MAX = 3.2
+    _VBAT_MIN = 2.2
 
     def __init__(self, peripheral):
         self._periph = peripheral
-        self._char = self._periph.getCharacteristics(uuid=_UUID_CONTROL)[0]
+        self._char = self._periph.getCharacteristics(uuid=self._UUID)[0]
 
     def get(self):
         """Read the control data and return it as dictionary"""
@@ -111,27 +144,29 @@ class WavePlusControl():
         except ValueError as error:
             logger.error(error)
             return {}
-        value_array = struct.unpack(self.DATA_FORMAT, raw_data)
+        value_array = struct.unpack(self._FORMAT, raw_data)
         control_data = self._decode(value_array)
         return control_data
 
     def _data_check(self, raw_data):
+        """Check the received data and raise an error if it is not valid"""
         cmd = raw_data[0:1]
-        if cmd != self.CMD:
+        if cmd != self._CMD:
             raise ValueError(f"Got data for wrong command: Expected \
-                             {self.CMD.hex()}, got {cmd.hex()}")
+                             {self._CMD.hex()}, got {cmd.hex()}")
 
-        req_length = struct.calcsize(self.DATA_FORMAT)
+        req_length = struct.calcsize(self._FORMAT)
         if len(raw_data) != req_length:
             raise ValueError(f"Wrong length data: Expected {req_length}), \
                               received {len(raw_data[2:])}")
 
     def _decode(self, value_array):
+        """Parse the obtained data and format it in a dictionary"""
         illuminance = value_array[4]
 
         vbat = value_array[19] / 1000.0
-        vbat_pct = 100 * round(
-            max(1, min(0, vbat-self.VBAT_MIN)) / (self.VBAT_MAX - self.VBAT_MIN))
+        vbat_pct = 100 * round(max(1, min(0,
+                vbat-self._VBAT_MIN)) / (self._VBAT_MAX - self._VBAT_MIN))
 
         control_data = {"illuminance": illuminance, "battery": vbat_pct}
         return control_data
@@ -140,20 +175,20 @@ class WavePlusControl():
         """Read the control data (battery level and illuminance data)"""
 
         # Define the notificaiton handle and turn notification on
-        delegate = Delegate(self._periph)
+        delegate = _Delegate(self._periph)
         self._periph.setDelegate(delegate)
 
         logger.debug("Control characteristics: Handle=%s/%s",
                      self._char.valHandle,
                      self._char.getHandle())
-        logger.debug("CCCD value (indication disabled): %s",
+        logger.debug("  CCCD value (indication disabled): %s",
                      self._periph.readCharacteristic(self._char.valHandle+2))
         self._periph.writeCharacteristic(self._char.valHandle+2, b"\x02\x00")
-        logger.debug("CCCD value (indication enabled): %s",
+        logger.debug("  CCCD value (indication enabled): %s",
                      self._periph.readCharacteristic(self._char.valHandle+2))
 
         # Send command to the characteristic
-        self._periph.writeCharacteristic(self._char.valHandle, self.CMD)
+        self._periph.writeCharacteristic(self._char.valHandle, self._CMD)
 
         # Wait on notification, get the data, and disable notification
         logger.debug("Waiting on notificaiton")
@@ -168,9 +203,10 @@ class WavePlusControl():
 
         return raw_data
 
-    @staticmethod
-    def get_keys():
-        return ("illuminance", "battery") # "measurement_periods"
+    @classmethod
+    def get_keys(cls):
+        """Get the keys provided by this class"""
+        return cls._KEYS
 
 
 class WavePlus():
@@ -178,7 +214,7 @@ class WavePlus():
 
     This class provides all the functionalities to access a Wave Plus sensor
     and read its sensor values. The class instance is assigned to a specific
-    sensor defined by its serial number (sn):
+    sensor defined by its serial number:
 
         wp_device = waveplus.WavePlus(serial_number, my_sensor_name)
 
@@ -190,7 +226,7 @@ class WavePlus():
     The returned sensor data is returned in form of a dictionary.
 
     Args:
-        sn: Serial number of the device
+        serial_number: Serial number of the device
         [name]: Optional nick name of the device
     """
 
@@ -198,7 +234,7 @@ class WavePlus():
     # if multiple WavePlus devices are used (class variable)
     _sn2addr = {}
 
-    def __init__(self, sn, name=""):
+    def __init__(self, serial_number, name=""):
         # The constructor does nothing else than registering the serial number
         # and the nick name. If no nickname is provided, it is defaulted to the
         # serial number.
@@ -206,8 +242,8 @@ class WavePlus():
         self._sensor = None
         self._control = None
         self._mac = None
-        self._sn = str(sn)
-        self._name = name if name != "" else str(sn)
+        self._sn = str(serial_number)
+        self._name = name if name != "" else str(serial_number)
 
     def stop(self):
         """Stops the BLE connection to the device
@@ -224,6 +260,11 @@ class WavePlus():
         self.stop()
 
     def discover(self):
+        """Discover the device defined via the serial number
+        
+        This method launches the BLE scanner 50 times to find the specified
+        device. All discovered devices are cached. If a device that has to
+        be sicovered is already cached, no scanning is performed."""
         # Device is known, there is nothing to discover
         if self._mac is not None:
             return
@@ -245,6 +286,7 @@ class WavePlus():
             search_count += 1
             for dev in devices:
                 manu_data = dev.getValueText(255)
+                print("  Manufacturing data:", manu_data)
                 sn = self._parse_serial_number(manu_data)
                 logger.debug("  Found device %s", sn)
 
@@ -279,11 +321,12 @@ class WavePlus():
         if self._periph is None:
             self._periph = Peripheral(self._mac)
         if self._sensor is None:
-            self._sensor = WavePlusSensors(self._periph)
+            self._sensor = _WavePlusSensors(self._periph)
         if self._control is None:
-            self._control = WavePlusControl(self._periph)
+            self._control = _WavePlusControl(self._periph)
 
     def disconnect(self):
+        """Disconnect the connected device"""
         if self._periph is not None:
             try:
                 self._periph.disconnect()
@@ -330,9 +373,9 @@ class WavePlus():
         raise ConnectionError("Failed to communicate with device {}/{}".format(
                 self._sn, self._name))
 
-    @staticmethod
-    def get_keys():
-        return WavePlusSensors.get_keys() + WavePlusControl.get_keys()
+    @classmethod
+    def get_keys(cls):
+        return _WavePlusSensors.get_keys() + _WavePlusControl.get_keys()
 
     @staticmethod
     def _parse_serial_number(hex_string):
@@ -389,7 +432,7 @@ if __name__ == "__main__":
     logger.info("Entering into sensor read loop. Exit with Ctrl+C")
 
     # Print the table header that includes all sensor names
-    keys = WavePlus(None).get_keys()
+    keys = WavePlus.get_keys()
     log_separator = "+" + ((("-" * 12) + "+") * (len(keys)+1))
     log_format = log_separator + "\n|" + \
                  ("{:>12}|" * (len(keys)+1)) + "\n" + log_separator
