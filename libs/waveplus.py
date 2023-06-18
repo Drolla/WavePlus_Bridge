@@ -22,6 +22,21 @@ _UUID_DATA = UUID("b42e2a68-ade7-11e4-89d3-123b93f75cba")
 _UUID_CONTROL = UUID("b42e2d06-ade7-11e4-89d3-123b93f75cba")
 
 
+class Delegate(DefaultDelegate):
+    data = {}
+
+    def __init__(self, mac):
+        DefaultDelegate.__init__(self)
+        self._mac = mac
+
+    def handleNotification(self, handle, data):
+        logger.debug("Received notification (%s): %s", handle, data)
+        Delegate.data[self._mac] = data
+
+    def get(self):
+        return Delegate.data[self._mac]
+
+
 class WavePlus():
     """Airthings Wave Plus sensor reader class.
 
@@ -155,7 +170,24 @@ class WavePlus():
         if (self._control_char is None):
             logger.error("Device is not connected: %s", self._sn)
             raise ConnectionError("Device is not connected" + self._sn)
-        raw_data = self._control_char.read()
+        
+        # Define the notificaiton handle and turn notification on
+        delegate = Delegate(self._periph)
+        self._periph.setDelegate(delegate)
+        self._periph.writeCharacteristic(self._control_char.valHandle+2, b"\x02\x00")
+
+        # Send command to the characteristic
+        self._periph.writeCharacteristic(self._control_char.valHandle, b"\x6d")
+
+        # Wait on notification, get the data, and disable notification
+        logger.debug("Waiting on notificaiton for %s", self._sn)
+        if not self._periph.waitForNotifications(10.0):
+            logger.error("No notification received for device %s", self._sn)
+            return {}
+        raw_data = delegate.get()
+        self._periph.writeCharacteristic(self._control_char.valHandle+2, b"\x00\x00")
+        
+        # Process the received data
         cmd = raw_data[0:1]
         if cmd != CMD:
             logger.warning("Got data for wrong command: Expected %s, got %s",
@@ -208,7 +240,7 @@ class WavePlus():
                 control_data = self.read_control_data()
                 self.disconnect()
                 logger.debug("  -> %s", sensor_data)
-                return sensor_data | control_data
+                return dict(**sensor_data, **control_data)
             except Exception as err:
                 logger.warning("Failed to communicate with device "
                                "%s (attempt %s of %s): %s",
@@ -305,7 +337,8 @@ if __name__ == "__main__":
         for wp_device in wp_devices:
             try:
                 wp_device_data = wp_device.get()
-                logger.info(log_format.format(wp_device._name, *wp_device_data))
+                wp_device_values = ["" if key not in wp_device_data else wp_device_data[key] for key in keys]
+                logger.info(log_format.format(wp_device._name, *wp_device_values))
             except KeyboardInterrupt:
                 break
             except Exception as err:
