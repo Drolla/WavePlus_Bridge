@@ -751,6 +751,8 @@ def main():
                 try:
                     ldb.insert(sensor_data_no_ts,
                                tstamp=int(iteration_start_time))
+                except ValueError as err:
+                    logger.warning("Failed to log the data: %s", err)
                 except Exception as err:
                     logger.error("Failed to log the data: %s", err)
                     logger.debug("  Stack trace:", exc_info=1)
