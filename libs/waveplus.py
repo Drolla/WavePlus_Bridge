@@ -379,16 +379,20 @@ class WavePlus():
 
     @staticmethod
     def _parse_serial_number(hex_string):
+        """Parse the manufacturing data and returns the serial number
+        
+        Returns None if the provided data is invalid
+        """
         if hex_string is None:
-            sn = None
-        else:
+            return None
+        try:
             manu_data = struct.unpack("<HLBB", bytearray.fromhex(hex_string))
-            if manu_data[0] == 0x0334:
-                sn = str(manu_data[1])
-            else:
-                sn = None
-        return sn
-    
+        except struct.error:
+            return None
+        if manu_data[0] != 0x0334:
+            return None
+        return str(manu_data[1])
+
     @property
     def name(self):
         return self._name
