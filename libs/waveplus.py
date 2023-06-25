@@ -358,7 +358,7 @@ class WavePlus():
                 sensor_data = self._sensor.get()
                 control_data = self._control.get()
                 self.disconnect()
-                logger.debug("  -> %s", sensor_data)
+                logger.debug("  -> s=%s, c=%s", sensor_data, control_data)
                 return dict(**sensor_data, **control_data)
             except Exception as error:
                 logger.warning("Failed to communicate with device \
