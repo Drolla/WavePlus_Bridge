@@ -286,7 +286,6 @@ class WavePlus():
             search_count += 1
             for dev in devices:
                 manu_data = dev.getValueText(255)
-                print("  Manufacturing data:", manu_data)
                 sn = self._parse_serial_number(manu_data)
                 logger.debug("  Found device %s", sn)
 
