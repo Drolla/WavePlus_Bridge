@@ -18,6 +18,8 @@ import struct
 import logging
 # pylint: disable-next=E0401
 from bluepy.btle import UUID, Peripheral, Scanner, DefaultDelegate
+#import time_cache
+from libs import time_cache
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,8 @@ class _WavePlusSensors():
              "co2", "voc")
 
     def __init__(self, peripheral):
-        self._char = peripheral.getCharacteristics(uuid=self._UUID)[0]
+        self._periph = peripheral
+
 
     def get(self):
         """Read the sensor data and return it as dictionary"""
@@ -101,7 +104,8 @@ class _WavePlusSensors():
         }
 
     def _read_data(self):
-        return self._char.read()
+        char = self._periph.getCharacteristics(uuid=self._UUID)[0]
+        return char.read()
 
     @classmethod
     def get_keys(cls):
@@ -130,10 +134,13 @@ class _WavePlusControl():
     _CMD=struct.pack('<B', 0x6d)
     _VBAT_MAX = 3.2
     _VBAT_MIN = 2.2
+    _CACHE_TTL = 3600
+    _CACHE_MAX_READS = 100
+
+    cache = time_cache.TimeCache(ttl=_CACHE_TTL, max_read=_CACHE_MAX_READS)
 
     def __init__(self, peripheral):
         self._periph = peripheral
-        self._char = self._periph.getCharacteristics(uuid=self._UUID)[0]
 
     def get(self):
         """Read the control data and return it as dictionary"""
@@ -174,21 +181,35 @@ class _WavePlusControl():
     def _read_data(self):
         """Read the control data (battery level and illuminance data)"""
 
+        # Try to obtain the data from the cache
+        periph_address = self._periph.addr
+        try:
+            raw_data = self.cache[periph_address]
+        except KeyError:
+            pass
+        else:
+            logger.debug("Control data: Address=%s, used cached data: %s",
+                        periph_address, raw_data)
+            return raw_data
+
+        # Get the characteristic
+        char = self._periph.getCharacteristics(uuid=self._UUID)[0]
+
         # Define the notificaiton handle and turn notification on
         delegate = _Delegate(self._periph)
         self._periph.setDelegate(delegate)
 
         logger.debug("Control characteristics: Handle=%s/%s",
-                     self._char.valHandle,
-                     self._char.getHandle())
+                     char.valHandle,
+                     char.getHandle())
         logger.debug("  CCCD value (indication disabled): %s",
-                     self._periph.readCharacteristic(self._char.valHandle+2))
-        self._periph.writeCharacteristic(self._char.valHandle+2, b"\x02\x00")
+                     self._periph.readCharacteristic(char.valHandle+2))
+        self._periph.writeCharacteristic(char.valHandle+2, b"\x02\x00")
         logger.debug("  CCCD value (indication enabled): %s",
-                     self._periph.readCharacteristic(self._char.valHandle+2))
+                     self._periph.readCharacteristic(char.valHandle+2))
 
         # Send command to the characteristic
-        self._periph.writeCharacteristic(self._char.valHandle, self._CMD)
+        self._periph.writeCharacteristic(char.valHandle, self._CMD)
 
         # Wait on notification, get the data, and disable notification
         logger.debug("Waiting on notificaiton")
@@ -199,8 +220,10 @@ class _WavePlusControl():
             pass
         raw_data = delegate.get()
         logger.debug("Received data: %s", raw_data)
-        self._periph.writeCharacteristic(self._char.valHandle+2, b"\x00\x00")
+        self._periph.writeCharacteristic(char.valHandle+2, b"\x00\x00")
 
+        # Store the data in the cache, and return it
+        self.cache[periph_address] = raw_data
         return raw_data
 
     @classmethod
