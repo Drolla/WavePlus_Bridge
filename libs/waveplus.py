@@ -131,7 +131,7 @@ class _WavePlusControl():
 
     _UUID = UUID("b42e2d06-ade7-11e4-89d3-123b93f75cba")
     _FORMAT = '<BBL12B6H'
-    _KEYS = ("illuminance", "battery") # Not implemented: measurement_periods
+    _KEYS = ("illuminance", "battery")  # Not implemented: measurement_periods
     _CMD = struct.pack('<B', 0x6d)
     _VBAT_MAX = 3.2
     _VBAT_MIN = 2.2
@@ -401,11 +401,10 @@ class WavePlus():
         """Get the keys provided by this class"""
         return _WavePlusSensors.get_keys() + _WavePlusControl.get_keys()
 
-
     @staticmethod
     def _parse_serial_number(hex_string):
         """Parse the manufacturing data and returns the serial number
-        
+
         Returns None if the provided data is invalid
         """
         if hex_string is None:
@@ -464,16 +463,17 @@ if __name__ == "__main__":
     keys = WavePlus.get_keys()
     log_separator = "+" + ((("-" * 12) + "+") * (len(keys)+1))
     log_format = log_separator + "\n|" + \
-                 ("{:>12}|" * (len(keys)+1)) + "\n" + log_separator
+        ("{:>12}|" * (len(keys)+1)) + "\n" + log_separator
     logger.info(log_format.format("Device", *keys))
 
     # Infinite loop where all sensors are repeatably read
     while True:
         for wp_device in wp_devices:
             try:
-                wp_device_data = wp_device.get()
-                wp_device_values = ["" if key not in wp_device_data else wp_device_data[key] for key in keys]
-                logger.info(log_format.format(wp_device.name, *wp_device_values))
+                device_data = wp_device.get()
+                device_values = ["" if key not in device_data else
+                                 device_data[key] for key in keys]
+                logger.info(log_format.format(wp_device.name, *device_values))
             except KeyboardInterrupt:
                 break
             except Exception as err:
