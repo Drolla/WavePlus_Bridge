@@ -76,16 +76,19 @@ if __name__ == "__main__":
     logger.setLevel(logging.INFO)
 
     def write_data(cache, key):
+        """Write a random data word in a cache location defined by the key"""
         value = random.random()
         cache[key] = value
         logger.info("  Cache[%s] <= %s", key, value)
 
     def fill_cache(cache, cache_size):
+        """Fill a cache with random data"""
         logger.info("Fill the cache:")
         for key in range(cache_size):
             write_data(cache, key)
 
     def read_data(cache, key):
+        """Read a cache location"""
         try:
             value = cache[key]
             logger.info("  Cache[%s] -> %s", key, value)
@@ -93,6 +96,7 @@ if __name__ == "__main__":
             logger.info("  Cache[%s] -> (empty)", key)
 
     def read_data_many_times(cache, cache_size, nbr_iterations):
+        """Loop through the cache and read the data repeatedly"""
         logger.info("Read the data:")
         for _ in range(nbr_iterations):
             for key in range(cache_size):

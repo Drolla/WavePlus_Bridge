@@ -132,7 +132,7 @@ class ThreadedSendMail:
                 self.queue.task_done()
             except queue.Empty:
                 pass
-            except Exception as err:
+            except Exception:
                 logger.exception("  Stack trace:")
 
     def _send_mail(self, from_address, to_address, subject, message):
