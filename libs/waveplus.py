@@ -18,15 +18,17 @@ import struct
 import logging
 # pylint: disable-next=E0401
 from bluepy.btle import UUID, Peripheral, Scanner, DefaultDelegate
-#import time_cache
-from libs import time_cache
+try:
+    from libs import time_cache
+except Exception:
+    import time_cache
 
 logger = logging.getLogger(__name__)
 
 
 class _Delegate(DefaultDelegate):
     """Bluetooth message receiver class
-    
+
     The handleNotificaiton method will be called to receive notificaiton or
     indication messages.
     With the WavePlus device it has been observed that an indication message
@@ -59,7 +61,7 @@ class _Delegate(DefaultDelegate):
 
 class _WavePlusSensors():
     """WavePlus sensor reading and parsing class
-    
+
     Args:
         peripheral: BluePy peripheral class instance
     """
@@ -71,7 +73,6 @@ class _WavePlusSensors():
 
     def __init__(self, peripheral):
         self._periph = peripheral
-
 
     def get(self):
         """Read the sensor data and return it as dictionary"""
@@ -123,15 +124,15 @@ class _WavePlusSensors():
 
 class _WavePlusControl():
     """WavePlus control data reading and parsing class
-    
+
     Args:
         peripheral: BluePy peripheral class instance
     """
 
     _UUID = UUID("b42e2d06-ade7-11e4-89d3-123b93f75cba")
-    _FORMAT='<BBL12B6H'
+    _FORMAT = '<BBL12B6H'
     _KEYS = ("illuminance", "battery") # Not implemented: measurement_periods
-    _CMD=struct.pack('<B', 0x6d)
+    _CMD = struct.pack('<B', 0x6d)
     _VBAT_MAX = 3.2
     _VBAT_MIN = 2.2
     _CACHE_TTL = 3600
@@ -172,8 +173,8 @@ class _WavePlusControl():
         illuminance = value_array[4]
 
         vbat = value_array[19] / 1000.0
-        vbat_pct = 100 * round(max(1, min(0,
-                vbat-self._VBAT_MIN)) / (self._VBAT_MAX - self._VBAT_MIN))
+        vbat_pct = (vbat - self._VBAT_MIN) / (self._VBAT_MAX - self._VBAT_MIN)
+        vbat_pct = round(100 * max(1, min(0, vbat_pct)))
 
         control_data = {"illuminance": illuminance, "battery": vbat_pct}
         return control_data
@@ -189,7 +190,7 @@ class _WavePlusControl():
             pass
         else:
             logger.debug("Control data: Address=%s, used cached data: %s",
-                        periph_address, raw_data)
+                         periph_address, raw_data)
             return raw_data
 
         # Get the characteristic
@@ -284,7 +285,7 @@ class WavePlus():
 
     def discover(self):
         """Discover the device defined via the serial number
-        
+
         This method launches the BLE scanner 50 times to find the specified
         device. All discovered devices are cached. If a device that has to
         be sicovered is already cached, no scanning is performed."""
@@ -393,11 +394,13 @@ class WavePlus():
                 time.sleep(retry_delay)
 
         raise ConnectionError("Failed to communicate with device {}/{}".format(
-                self._sn, self._name))
+            self._sn, self._name))
 
     @classmethod
     def get_keys(cls):
+        """Get the keys provided by this class"""
         return _WavePlusSensors.get_keys() + _WavePlusControl.get_keys()
+
 
     @staticmethod
     def _parse_serial_number(hex_string):
@@ -444,16 +447,16 @@ if __name__ == "__main__":
         help_and_exit()
     period = int(sys.argv[1])
     serial_numbers = []
-    for serial_number in sys.argv[2:]:
-        if serial_number.isdigit() is not True or len(serial_number) != 10:
+    for serial_n in sys.argv[2:]:
+        if serial_n.isdigit() is not True or len(serial_n) != 10:
             help_and_exit()
-        serial_numbers.append(serial_number)
+        serial_numbers.append(serial_n)
 
     # Setup the devices
     wp_devices = []
-    for serial_number in serial_numbers:
-        logger.info("Setup device %s", serial_number)
-        wp_devices.append(WavePlus(serial_number))
+    for serial_n in serial_numbers:
+        logger.info("Setup device %s", serial_n)
+        wp_devices.append(WavePlus(serial_n))
 
     logger.info("Entering into sensor read loop. Exit with Ctrl+C")
 
