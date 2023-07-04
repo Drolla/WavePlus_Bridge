@@ -75,13 +75,13 @@ class Trigger:
     """
 
     def __init__(self, config, action_functions):
-        def get_config(key, type, default=None):
+        def get_config(key, type_, default=None):
             """Extracts a configuration key value and formats it if required"""
 
             value = config[key] if key in config else default
-            if type == "list" and not isinstance(value, list):
+            if type_ == "list" and not isinstance(value, list):
                 value = [value]
-            elif value != default and type == "time_span":
+            elif value != default and type_ == "time_span":
                 value = self._parse_time_span(value)
             return value
 

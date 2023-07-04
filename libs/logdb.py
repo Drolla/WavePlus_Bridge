@@ -475,8 +475,9 @@ class LogDB:
                            or just for some of them. Example:
                            {"temperature": 23.1, "humidity": 57.1}
             Dictionary of dictionary of float:
-                           Values can be provided for either all labels
-                           or just for some of them. Example:
+                           Values can be provided either for all labels or
+                           just for some of them. Additional values with
+                           unknown keys are ignored. Example:
                            {"living": {"temperature": 23.1,
                                        "humidity": 57.1},
                             "office": {"temperature": 24.1,
@@ -499,24 +500,25 @@ class LogDB:
         # {label_1: value_1, label_2: value_2}
         data_set = {"Time": tstamp}
         if isinstance(log_data, list):
-            assert len(log_data) == len(self.labels)-1, \
-                  "{}.log: Got {} data words for {} defined labels!".format(
-                  self.__class__.__name__, len(log_data), len(self.labels))
+            if len(log_data) != len(self.labels)-1:
+                raise ValueError("Got {} data words for {} defined labels!".
+                        format(len(log_data), len(self.labels)))
             for index, label in enumerate(self.labels[1:]):
                 data_set[label] = log_data[index]
         elif isinstance(log_data, dict):
             for d_key, d_value in log_data.items():
                 if isinstance(d_value, dict):
                     for d_key2, d_value2 in d_value.items():
-                        data_set[d_key+":"+d_key2] = d_value2
+                        if d_key+":"+d_key2 in self.labels:
+                            data_set[d_key+":"+d_key2] = d_value2
                 else:
                     data_set[d_key] = d_value
-            assert len(data_set) <= len(self.labels), \
-                    "{}.log: Got {} data words for {} defined labels!".format(
-                    self.__class__.__name__, len(data_set), len(self.labels))
+            if len(data_set) > len(self.labels):
+                raise ValueError("Got {} data words for {} defined labels!".
+                        format(len(data_set), len(self.labels)))
         else:
-            assert False, \
-                  "data set format unknown: {}".format(log_data.__class__)
+            raise ValueError(
+                    "Data set format unknown: {}".format(log_data.__class__))
 
         logger.debug("  data_set: %s", data_set)
 
