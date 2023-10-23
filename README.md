@@ -475,9 +475,9 @@ sudo bluetoothctl
 ```
 
 
-## Python Library Installation
+## Python Library Installation (bullseye and before)
 
-The Raspbian Buster lite and full versions include both Python 3.7.3. However pip3, the Python Package Installer that is required to install additional packages is not pre-installed on the lite version. The following command will install it:
+The Raspbian Buster and later, lite and full versions include both Python 3.7.3. However pip3, the Python Package Installer that is required to install additional packages is not pre-installed on the lite version. The following command will install it:
 
 ```
 sudo apt install python3-pip
@@ -491,6 +491,31 @@ sudo pip3 install bluepy
 sudo pip3 install paho-mqtt
 ```
 
+## Python Library Installation (bookworm and later)
+
+The Raspberry Pi OS bookworm and later no longer allows globally installing Python libraries using pip.
+The preferred approach is to create a virtualenv.
+
+
+Use the following to create a virtualenv in the install directory.
+```
+python -m venv /opt/waveplus_bridge
+```
+
+To make sure you are working within the venv for this next step, activate it. This step is optional but it ensures your paths use the correct python binaries.
+
+```
+cd /opt/waveplus_bridge
+source bin/activate
+```
+
+The prompt will change which shows activation was successful. Running `which python` will show the path to the binary is now your virtualenv: `/opt/waveplus_bridge/bin/python`.
+
+Now install the prerequisites with the following command:
+
+```
+pip install -r requirements.txt
+```:w
 
 # Debugging
 
