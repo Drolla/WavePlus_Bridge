@@ -73,9 +73,9 @@ function LoadGraphs(Url,DivId) {
 		["Temperature", "graph_temp", "/csv?*:temp*", "°C"],
 		["Humidity", "graph_hum", "/csv?*:hum*", "%rH"],
 		["CO2", "graph_co2", "/csv?*:co2*", "hPa"],
-		["VOC", "graph_voc", "/csv?*:voc*", "ppm"] ];
-	//var graphList =	[
-	//	["Radon", "graph_radon", "/csv?*:radon*", "Bq/m3"] ];
+		["VOC", "graph_voc", "/csv?*:voc*", "ppm"],
+		["Pressure", "graph_pressure", "/csv?*:pressure*", "mBar"],
+	];
 
 	var innerHTML = "";
 	graphList.forEach(function (item, index) {
@@ -127,61 +127,4 @@ function LoadGraphs(Url,DivId) {
 		gs[gs.length-1].ready(LoadGraphsNextGraph);
 	};
 	LoadGraphsNextGraph();
-}
-
-function LoadGraphs_old(Url,DivId) {
-	var graphList =	[
-		["Radon", "graph_radon", "/csv?*:radon*", "Bq/m3"],
-		["Temperature", "graph_temp", "/csv?*:temp*", "°C"],
-		["Humidity", "graph_hum", "/csv?*:hum*", "%rH"],
-		["CO2", "graph_co2", "/csv?*:co2*", "hPa"],
-		["VOC", "graph_voc", "/csv?*:voc*", "ppm"] ];
-	//var graphList =	[
-	//	["Radon", "graph_radon", "/csv?*:radon*", "Bq/m3"] ];
-
-	var innerHTML = "";
-	graphList.forEach(function (item, index) {
-		//innerHTML += "<h3>"+item[0]+"</h3>" +
-		innerHTML += '<div id="'+item[1]+'" class="graph_container">' +
-							 '<div id="'+item[1]+'_label" class="graph_label"></div>' + 
-		                '<div id="'+item[1]+'_graph" class="graph_div"></div>' + 
-		              '</div>';
-	});
-	document.getElementById(DivId).innerHTML = innerHTML;
-	
-	var gs = [];
-	var currentTime = Date.now();
-	var graph_counter = 0;
-
-	graphList.forEach(function (item, index) {
-		gs.push(new Dygraph(
-			document.getElementById(item[1]+'_graph'),
-			item[2], {
-				title: item[0],
-				//legend: 'never',
-				labelsSeparateLines: true,
-				labelsDiv: document.getElementById(item[1]+'_label'),
-				ylabel: item[3],
-				showRangeSelector: true, // graph_counter==0,
-				rangeSelectorHeight: (DisplayType=="Mobile" ? 60 : 30),
-				rangeSelectorPlotLineWidth : 3,
-				strokeWidth: (DisplayType=="Mobile" ? 4 : 2),
-				//pointSize: 6,
-				//height: 300,
-				axisLabelFontSize: (DisplayType=="Mobile" ? 24 : 14),
-				dateWindow: [currentTime-24*3600*1000, currentTime],
-/*				labels: [ 'Date', 'Y1', 'Y2', 'Y3', 'Y4' ],
-				series : {
-					'Y1': {axis: 'y'},
-					'Y2': {axis: 'y2'},
-				} */
-			}
-		));
-		graph_counter++;
-	});
-	var sync = Dygraph.synchronize(gs, {
-		selection: false,
-		zoom: true,
-		range: false
-	});
 }
