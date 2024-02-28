@@ -174,7 +174,7 @@ class _WavePlusControl():
 
         vbat = value_array[19] / 1000.0
         vbat_pct = (vbat - self._VBAT_MIN) / (self._VBAT_MAX - self._VBAT_MIN)
-        vbat_pct = round(100 * max(1, min(0, vbat_pct)))
+        vbat_pct = round(100 * max(0.0, min(1.0, vbat_pct)))
 
         control_data = {"illuminance": illuminance, "battery": vbat_pct}
         return control_data
