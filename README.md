@@ -30,7 +30,8 @@ The tool runs with Python 3.x. It can be installed as a service that is launched
     * [Setup the Wave Plus Bridge as a Service](#setup-the-wave-plus-bridge-as-a-service)
 * [Raspberry Pi Installation](#raspberry-pi-installation)
     * [Raspbian installation](#raspbian-installation)
-    * [Python Library Installation](#python-library-installation)
+    * [Python Library Installation (Bullseye and before)](#python-library-installation-bullseye-and-before)
+    * [Python Library Installation (Bookworm and later)](#python-library-installation-bookworm-and-later)
 * [Debugging](#debugging)
     * [Some simple checks](#some-simple-checks)
     * [Run the Wave Plus communication test application](#run-the-wave-plus-communication-test-application)
@@ -474,7 +475,7 @@ sudo bluetoothctl
 [bluetooth]# exit
 ```
 
-## Python Library Installation (bullseye and before)
+## Python Library Installation (Bullseye and before)
 
 The Raspbian Buster and later, lite and full versions include both Python 3.7.3. However pip3, the Python Package Installer that is required to install additional packages is not pre-installed on the lite version. The following command will install it:
 
@@ -490,7 +491,7 @@ sudo pip3 install bluepy
 sudo pip3 install paho-mqtt
 ```
 
-## Python Library Installation (bookworm and later)
+## Python Library Installation (Bookworm and later)
 
 The Raspberry Pi OS bookworm and later no longer allows globally installing Python libraries using pip.
 The preferred approach is to create a virtualenv.
