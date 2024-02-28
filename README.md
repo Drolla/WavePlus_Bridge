@@ -474,7 +474,6 @@ sudo bluetoothctl
 [bluetooth]# exit
 ```
 
-
 ## Python Library Installation (bullseye and before)
 
 The Raspbian Buster and later, lite and full versions include both Python 3.7.3. However pip3, the Python Package Installer that is required to install additional packages is not pre-installed on the lite version. The following command will install it:
@@ -515,7 +514,7 @@ Now install the prerequisites with the following command:
 
 ```
 pip install -r requirements.txt
-```:w
+```
 
 # Debugging
 
