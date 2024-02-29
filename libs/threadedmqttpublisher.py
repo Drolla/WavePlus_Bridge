@@ -289,7 +289,7 @@ if __name__ == "__main__":
     for dict_var_index in ("auth", "tls", "will"):
         if config[dict_var_index] is not None:
             config[dict_var_index] = yaml.load(config[dict_var_index],
-                                               Loader=yaml.FullLoader)
+                                               Loader=yaml.SafeLoader)
     # Launch ThreadedMqttPublisher 
     logger.info("Start ThreadedMqttPublisher:")
     for cfg_index in config:
@@ -309,7 +309,8 @@ if __name__ == "__main__":
     for message_str in config["message_dicts"]:
         logger.info("Publish data: %s ...", message_str)
         messages = []
-        for topic, payload in yaml.load(message_str, Loader=yaml.FullLoader).items():
+        for topic, payload in yaml.load(message_str,
+                                        Loader=yaml.SafeLoader).items():
             messages.append({"topic": topic, "payload": payload})
         mqtt_publisher.publish_multiple(messages, config["topic_root"])
         logger.info("... done")
