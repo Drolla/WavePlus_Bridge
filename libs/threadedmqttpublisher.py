@@ -89,12 +89,20 @@ class ThreadedMqttPublisher:
         # Store the configuration for later use
         self.config = locals()
 
-        # Create the MQTT client
-        mqttc = mqtt_client.Client(
+        # Create the MQTT client. Add the new argument 'callback_api_version'
+        # for the client version >=2.0.
+        mqtt_client_args = dict(
                 client_id=self.config["client_id"],
                 protocol=self.config["protocol"],
                 transport=self.config["transport"]
         )
+        try:
+            mqtt_client_args.update(dict(
+                callback_api_version=mqtt_client.CallbackAPIVersion.VERSION1
+            ))
+        except AttributeError:
+            pass
+        mqttc = mqtt_client.Client(**mqtt_client_args)
         self.mqttc = mqttc
         mqttc.enable_logger()
         logger.debug("ThreadedMqttPublisher: Connect to %s", hostname)
