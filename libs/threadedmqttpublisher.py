@@ -317,7 +317,7 @@ if __name__ == "__main__":
         time.sleep(3)
 
     logger.info("Disconnect")
-    mqtt_publisher.disconnect()
+    mqtt_publisher.stop()
     time.sleep(2)
 
     logger.info("Exit")
