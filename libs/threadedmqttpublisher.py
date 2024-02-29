@@ -8,10 +8,9 @@ See the file "LICENSE" for information on usage and redistribution of
 this file, and for a DISCLAIMER OF ALL WARRANTIES.
 """
 
-from threading import Thread
-import paho.mqtt.client as mqtt_client
 import time
 import logging
+import paho.mqtt.client as mqtt_client
 
 logger = logging.getLogger(__name__)
 
