@@ -8,10 +8,9 @@ See the file "LICENSE" for information on usage and redistribution of
 this file, and for a DISCLAIMER OF ALL WARRANTIES.
 """
 
-from threading import Thread
-import paho.mqtt.client as mqtt_client
 import time
 import logging
+import paho.mqtt.client as mqtt_client
 
 logger = logging.getLogger(__name__)
 
@@ -90,12 +89,20 @@ class ThreadedMqttPublisher:
         # Store the configuration for later use
         self.config = locals()
 
-        # Create the MQTT client
-        mqttc = mqtt_client.Client(
+        # Create the MQTT client. Add the new argument 'callback_api_version'
+        # for the client version >=2.0.
+        mqtt_client_args = dict(
                 client_id=self.config["client_id"],
                 protocol=self.config["protocol"],
                 transport=self.config["transport"]
         )
+        try:
+            mqtt_client_args.update(dict(
+                callback_api_version=mqtt_client.CallbackAPIVersion.VERSION1
+            ))
+        except AttributeError:
+            pass
+        mqttc = mqtt_client.Client(**mqtt_client_args)
         self.mqttc = mqttc
         mqttc.enable_logger()
         logger.debug("ThreadedMqttPublisher: Connect to %s", hostname)
@@ -282,7 +289,7 @@ if __name__ == "__main__":
     for dict_var_index in ("auth", "tls", "will"):
         if config[dict_var_index] is not None:
             config[dict_var_index] = yaml.load(config[dict_var_index],
-                                               Loader=yaml.FullLoader)
+                                               Loader=yaml.SafeLoader)
     # Launch ThreadedMqttPublisher 
     logger.info("Start ThreadedMqttPublisher:")
     for cfg_index in config:
@@ -302,14 +309,15 @@ if __name__ == "__main__":
     for message_str in config["message_dicts"]:
         logger.info("Publish data: %s ...", message_str)
         messages = []
-        for topic, payload in yaml.load(message_str, Loader=yaml.FullLoader).items():
+        for topic, payload in yaml.load(message_str,
+                                        Loader=yaml.SafeLoader).items():
             messages.append({"topic": topic, "payload": payload})
         mqtt_publisher.publish_multiple(messages, config["topic_root"])
         logger.info("... done")
         time.sleep(3)
 
     logger.info("Disconnect")
-    mqtt_publisher.disconnect()
+    mqtt_publisher.stop()
     time.sleep(2)
 
     logger.info("Exit")
